@@ -71,12 +71,23 @@ TEMPLATES = [
 # ASGI configuration for WebSocket support
 ASGI_APPLICATION = 'therapist_project.asgi.application'
 
-# Channel layers configuration (in-memory for development)
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels.layers.InMemoryChannelLayer',
-    },
-}
+# Channel layers configuration (Redis in production if configured)
+REDIS_URL = os.environ.get('CHANNEL_REDIS_URL', '')
+if REDIS_URL:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                'hosts': [REDIS_URL],
+            },
+        },
+    }
+else:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        },
+    }
 
 WSGI_APPLICATION = 'therapist_project.wsgi.application'
 
@@ -164,6 +175,10 @@ A2F_OUTPUT_DIR = os.environ.get(
     'A2F_OUTPUT_DIR',
     str(BASE_DIR.parent.parent / 'Audio2Face-3D-Samples' / 'scripts' / 'audio2face_3d_api_client')
 )
+A2F_CONFIG_PATH = os.environ.get('A2F_CONFIG_PATH', str(Path(A2F_OUTPUT_DIR) / 'config' / 'config_claire.yml'))
+A2F_API_KEY = os.environ.get('A2F_API_KEY', '')
+A2F_FUNCTION_ID = os.environ.get('A2F_FUNCTION_ID', '')
+A2F_RUN_TIMEOUT = int(os.environ.get('A2F_RUN_TIMEOUT', '180'))
 
 # =============================================================================
 # Logging Configuration

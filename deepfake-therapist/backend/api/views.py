@@ -6,6 +6,7 @@ Handles HTTP endpoints for the AI Therapist application.
 
 import logging
 import time
+import uuid
 from pathlib import Path
 from django.conf import settings
 from django.http import FileResponse, Http404
@@ -18,7 +19,9 @@ from .utils import (
     metrics_tracker,
     rate_limiter,
 )
+from .session_store import conversation_store
 from .a2f import build_a2f_payload, resolve_run_dir, resolve_audio_path
+from .a2f_runner import generate_a2f_run, A2FGenerationError
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +56,8 @@ class DialogueView(APIView):
     {
         "response": "AI therapist response",
         "source": "openai" | "fallback",
-        "latency_ms": 123
+        "latency_ms": 123,
+        "session_id": "uuid4..."
     }
     """
     
@@ -65,6 +69,7 @@ class DialogueView(APIView):
         user_text = request.data.get('text', '').strip()
         user_api_key = request.data.get('api_key', '')
         provider = request.data.get('provider', getattr(settings, 'DEFAULT_LLM_PROVIDER', 'gemini'))
+        session_id = request.data.get('session_id') or uuid.uuid4().hex
         
         # Validate input
         if not user_text:
@@ -95,6 +100,10 @@ class DialogueView(APIView):
         
         # Record metrics
         metrics_tracker.record_request(latency_ms, source)
+
+        # Persist conversation history in-memory for the session
+        conversation_store.add(session_id, 'user', user_text)
+        conversation_store.add(session_id, 'assistant', response_text)
         
         logger.info(f"Dialogue processed: latency={latency_ms}ms, source={source}")
         
@@ -102,6 +111,7 @@ class DialogueView(APIView):
             'response': response_text,
             'source': source,
             'latency_ms': latency_ms,
+            'session_id': session_id,
         })
     
     def get_client_ip(self, request):
@@ -121,6 +131,19 @@ class MetricsView(APIView):
     def get(self, request):
         """Return API metrics."""
         return Response(metrics_tracker.get_metrics())
+
+
+class SessionHistoryView(APIView):
+    """
+    Session history endpoint.
+    GET /api/session/<session_id>/ - Returns the stored conversation turns.
+    """
+
+    def get(self, request, session_id: str):
+        history = conversation_store.get(session_id)
+        if not history:
+            return Response({'history': []})
+        return Response({'history': history})
 
 
 class TTSView(APIView):
@@ -244,3 +267,37 @@ class A2FAudioView(APIView):
         if not audio_path:
             raise Http404("Audio file not found")
         return FileResponse(open(audio_path, 'rb'), content_type='audio/wav')
+
+
+class A2FGenerateView(APIView):
+    """
+    Kick off a new Audio2Face generation from text using Google TTS + NVIDIA NIM client.
+    POST /api/a2f/generate/
+    """
+
+    def post(self, request):
+        text = request.data.get('text', '').strip()
+        voice_name = request.data.get('voice_name', 'en-US-Neural2-F')
+        speaking_rate = float(request.data.get('speaking_rate', 0.95))
+        a2f_api_key = request.data.get('a2f_api_key', '')
+        function_id = request.data.get('function_id', '')
+
+        if not text:
+            return Response({'error': 'Text field is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            run_dir = generate_a2f_run(
+                text,
+                voice_name=voice_name,
+                speaking_rate=speaking_rate,
+                api_key=a2f_api_key,
+                function_id=function_id,
+            )
+            payload = build_a2f_payload(run_dir)
+            return Response(payload, status=status.HTTP_201_CREATED)
+        except A2FGenerationError as e:
+            logger.error("A2F generation failed: %s", e)
+            return Response({'error': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except Exception as e:
+            logger.error("Unexpected A2F generation error: %s", e)
+            return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

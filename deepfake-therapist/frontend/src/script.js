@@ -634,7 +634,8 @@ async function processUserInput(text) {
         state.websocket.send(JSON.stringify({
             text: text,
             api_key: state.apiKey,
-            provider: state.provider
+            provider: state.provider,
+            session_id: state.sessionId,
         }));
         return;
     }
@@ -647,7 +648,8 @@ async function processUserInput(text) {
             body: JSON.stringify({
                 text: text,
                 api_key: state.apiKey,
-                provider: state.provider
+                provider: state.provider,
+                session_id: state.sessionId,
             })
         });
         
@@ -656,6 +658,9 @@ async function processUserInput(text) {
         }
         
         const data = await response.json();
+        if (data.session_id) {
+            state.sessionId = data.session_id;
+        }
         
         // Add AI response
         addMessage(data.response, 'ai');

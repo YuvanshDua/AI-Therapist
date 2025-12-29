@@ -6,9 +6,11 @@ django-cors-headers>=4.3.0
 # ASGI & WebSocket support
 channels>=4.0.0
 daphne>=4.0.0
+channels-redis>=4.2.0
 
 # Google Gemini AI (NEW SDK - Free tier available!)
 google-genai>=1.0.0
+google-cloud-texttospeech>=2.20.0
 
 # Environment variables
 python-dotenv>=1.0.0

@@ -1,429 +1,110 @@
-# MindfulAI - AI Therapist Avatar
+# MindfulAI – AI Therapist Avatar
 
-<div align="center">
-
-![MindfulAI Logo](https://img.shields.io/badge/MindfulAI-AI%20Therapist-667eea?style=for-the-badge&logo=brain&logoColor=white)
-
-**A Real-time AI-Powered Mental Wellness Companion**
-
-[![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
-[![Django](https://img.shields.io/badge/Django-4.x-092E20?style=flat-square&logo=django&logoColor=white)](https://djangoproject.com)
-[![Gemini](https://img.shields.io/badge/Google%20Gemini-AI-4285F4?style=flat-square&logo=google&logoColor=white)](https://ai.google.dev)
-[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
-
-</div>
+A web experience that pairs a calming chat UI with an AI “therapist.” Users can type or speak, get streamed responses from Gemini or a local LLM, hear TTS playback, and see an animated avatar. An optional Audio2Face viewer can play pre-generated lip-sync + emotion data.
 
 ---
 
-## 📋 Table of Contents
-
-- [Overview](#-overview)
-- [Features](#-features)
-- [Architecture](#-architecture)
-- [Tech Stack](#-tech-stack)
-- [Getting Started](#-getting-started)
-- [Project Structure](#-project-structure)
-- [API Documentation](#-api-documentation)
-- [Configuration](#-configuration)
-- [Screenshots](#-screenshots)
-- [Contributing](#-contributing)
-- [License](#-license)
+## Overview
+- **Purpose:** Always-available, judgment-free space for light mental-wellness support.
+- **Modes:** Text chat, voice input (Web Speech API), voice output (SpeechSynthesis), streaming responses.
+- **Providers:** Google Gemini (default) or a local Ollama-compatible model with caching and rate limiting.
+- **Avatar:** Image-based avatar with speaking/emotion cues; optional Audio2Face playback for 3D mouth/emotion tracks.
+- **Safety:** Clear “not a replacement for therapy” positioning, rate limits, fallback replies when LLM is down.
+- **(New) A2F pipeline:** Kick off Audio2Face generation from fresh text (Google TTS → NVIDIA A2F client) when credentials are configured.
+- **(New) Sessions:** Server issues/accepts a `session_id` so you can fetch conversation history per session.
 
 ---
 
-## 🎯 Overview
-
-**MindfulAI** is a production-quality web application that provides an AI-powered mental wellness companion. It combines cutting-edge AI technology with an intuitive, calming user interface to create a supportive space for users to express their thoughts and feelings.
-
-### Problem Statement
-
-Mental health support is often inaccessible due to cost, stigma, or availability. MindfulAI provides an always-available, non-judgmental AI companion that can offer initial support and coping strategies.
-
-### Solution
-
-A real-time conversational AI therapist with:
-
-- **Voice interaction** using Web Speech API
-- **AI responses** powered by Google Gemini
-- **Animated avatar** for human-like engagement
-- **Professional UI** designed for mental wellness
+## Features
+- **Conversational core:** REST + WebSocket streaming; fallback template replies if LLM unavailable.
+- **Voice pipeline:** Browser STT for input, browser TTS for output with selectable voices, rate/pitch controls.
+- **Provider choice:** Switch between Gemini and local LLM per request; user-supplied API key supported.
+- **Resilience:** In-memory cache, rate limiter, metrics endpoint, and cooldowns on the client.
+- **A2F viewer:** Load latest Audio2Face run (frames + emotions + wav) and drive the avatar with playback controls.
 
 ---
 
-## ✨ Features
-
-### Core Features
-
-| Feature                | Description                               |
-| ---------------------- | ----------------------------------------- |
-| 🎙️ **Voice Chat**      | Speak naturally using Speech-to-Text      |
-| 🤖 **AI Responses**    | Empathetic responses via Google Gemini AI |
-| 🔊 **Voice Output**    | Text-to-Speech for natural conversation   |
-| 💬 **Chat Interface**  | Real-time streaming with message history  |
-| 👤 **Animated Avatar** | Visual feedback during conversations      |
-
-### Technical Features
-
-| Feature                    | Description                                  |
-| -------------------------- | -------------------------------------------- |
-| ⚡ **WebSocket Streaming** | Real-time token-by-token response delivery   |
-| 🔄 **Fallback System**     | Template-based responses when AI unavailable |
-| 🛡️ **Rate Limiting**       | Protection against API abuse                 |
-| 📊 **Metrics Tracking**    | API usage and latency monitoring             |
-| 🌙 **Dark Mode**           | Eye-friendly dark theme support              |
-
-### User Experience
-
-- **Quick Prompts**: Pre-defined conversation starters
-- **Voice Selection**: Choose from available TTS voices
-- **Responsive Design**: Works on mobile and desktop
-- **Glassmorphism UI**: Modern, calming visual design
+## Architecture
+- **Frontend:** Vanilla HTML/JS with Tailwind CDN. WebSocket client for streaming, STT/TTS in-browser, avatar animations, Audio2Face playback controls.
+- **Backend:** Django + DRF + Channels (ASGI). REST endpoints for dialogue/health/metrics/TTS/A2F; WebSocket consumer for streamed LLM tokens.
+- **LLM integration:** Gemini via `google-genai`; optional local model via Ollama-compatible HTTP API. Template fallback to ensure responses.
+- **Storage:** No persistent chat storage; SQLite only for Django defaults. A2F output read from a folder path.
 
 ---
 
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        CLIENT (Browser)                          │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────────────────┐ │
-│  │   UI    │  │  STT    │  │  TTS    │  │    Avatar Module    │ │
-│  │ (HTML/  │  │ (Web    │  │ (Web    │  │    (Animations)     │ │
-│  │  CSS/JS)│  │ Speech) │  │ Speech) │  │                     │ │
-│  └────┬────┘  └────┬────┘  └────┬────┘  └─────────────────────┘ │
-│       │            │            │                                │
-│       └────────────┴────────────┴────────────────────────────────┤
-│                              │                                   │
-│              ┌───────────────┴───────────────┐                   │
-│              │  WebSocket / REST API Client  │                   │
-│              └───────────────┬───────────────┘                   │
-└──────────────────────────────┼───────────────────────────────────┘
-                               │
-                    ═══════════════════════
-                    │ HTTP/WebSocket │
-                    ═══════════════════════
-                               │
-┌──────────────────────────────┼───────────────────────────────────┐
-│                       BACKEND (Django)                           │
-├──────────────────────────────┼───────────────────────────────────┤
-│              ┌───────────────┴───────────────┐                   │
-│              │      Django Channels          │                   │
-│              │   (ASGI + WebSocket)          │                   │
-│              └───────────────┬───────────────┘                   │
-│                              │                                   │
-│  ┌─────────────┬─────────────┼─────────────┬─────────────────┐   │
-│  │             │             │             │                 │   │
-│  ▼             ▼             ▼             ▼                 │   │
-│ ┌───────┐ ┌─────────┐ ┌───────────┐ ┌──────────┐            │   │
-│ │Health │ │Dialogue │ │WebSocket  │ │ Metrics  │            │   │
-│ │ Check │ │  View   │ │ Consumer  │ │  View    │            │   │
-│ └───────┘ └────┬────┘ └─────┬─────┘ └──────────┘            │   │
-│                │            │                                │   │
-│                └────────┬───┘                                │   │
-│                         ▼                                    │   │
-│               ┌─────────────────┐                            │   │
-│               │  Utils Module   │                            │   │
-│               │  - Rate Limiter │                            │   │
-│               │  - Cache        │                            │   │
-│               │  - Gemini API   │                            │   │
-│               │  - Fallback     │                            │   │
-│               └────────┬────────┘                            │   │
-└────────────────────────┼─────────────────────────────────────────┘
-                         │
-                ═════════════════
-                │ HTTPS API │
-                ═════════════════
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │   Google Gemini AI  │
-              │   (Free Tier API)   │
-              └─────────────────────┘
-```
+## API Quick Reference
+- `GET /api/health/` – Health status.
+- `POST /api/dialogue/` – `{ text, api_key?, provider? }` → `{ response, source, latency_ms }`.
+- `GET /api/metrics/` – Request counts, latency stats, rate-limit count.
+- `POST /api/tts/` – Uses Google Cloud TTS if credentials set; falls back to browser TTS hint.
+- `GET /api/a2f/latest/` – Latest parsed Audio2Face run (frames, emotions, audio URL).
+- `GET /api/a2f/audio/<run_id>/` – Stream the generated wav for a run.
+- `POST /api/a2f/generate/` – Generate a new Audio2Face run from text (requires A2F creds); returns payload for the new run.
+- `GET /api/session/<session_id>/` – Fetch stored conversation turns for that session.
+- WebSocket `ws://<host>/ws/stream/` – Send `{ text, api_key?, provider? }`, receive start/token/done events.
 
 ---
 
-## 🛠️ Tech Stack
-
-### Backend
-
-| Technology                | Purpose                   |
-| ------------------------- | ------------------------- |
-| **Python 3.9+**           | Core programming language |
-| **Django 4.x**            | Web framework             |
-| **Django REST Framework** | REST API development      |
-| **Django Channels**       | WebSocket support         |
-| **Google Gemini AI**      | Large Language Model      |
-
-### Frontend
-
-| Technology         | Purpose               |
-| ------------------ | --------------------- |
-| **HTML5/CSS3/JS**  | Core web technologies |
-| **Tailwind CSS**   | Utility-first styling |
-| **Web Speech API** | STT and TTS           |
-
-### Key Libraries
-
-```
-Django>=4.2.0
-djangorestframework>=3.14.0
-django-cors-headers>=4.3.0
-channels>=4.0.0
-daphne>=4.0.0
-google-genai>=1.0.0
-python-dotenv>=1.0.0
-```
+## Configuration
+Set via environment variables (see `backend/.env.example`):
+- `GEMINI_API_KEY` / `GEMINI_MODEL` – Gemini access.
+- `LLM_PROVIDER` – `gemini` (default) or `local`.
+- `LOCAL_LLM_URL`, `LOCAL_LLM_MODEL`, `LOCAL_NUM_PREDICT`, `LOCAL_TEMPERATURE` – Local model settings.
+- `RATE_LIMIT_CALLS_PER_MINUTE` – Per-IP throttle.
+- `A2F_OUTPUT_DIR` – Folder containing Audio2Face runs (`animation_frames.csv`, optional emotion CSV, wav).
+- `A2F_CONFIG_PATH` – YAML config for A2F client (defaults to `config/config_claire.yml` under output dir).
+- `A2F_API_KEY`, `A2F_FUNCTION_ID` – Credentials for NVIDIA Audio2Face-3D NIM.
+- `A2F_RUN_TIMEOUT` – Seconds to wait for a generation run.
+- `CHANNEL_REDIS_URL` – If set, Channels uses Redis instead of in-memory (recommended for production).
+- `DJANGO_SECRET_KEY`, `DEBUG` – Standard Django settings.
 
 ---
 
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Python 3.9 or higher
-- pip (Python package manager)
-- Google Gemini API key (free)
-
-### Installation
-
-1. **Clone the repository**
-
+## Run Locally
 ```bash
-git clone https://github.com/yourusername/mindfulai.git
-cd mindfulai
-```
-
-2. **Create virtual environment**
-
-```bash
+cd backend
 python -m venv venv
-
-# Windows
-venv\Scripts\activate
-
-# macOS/Linux
-source venv/bin/activate
-```
-
-3. **Install dependencies**
-
-```bash
-cd deepfake-therapist/backend
+venv\Scripts\activate  # or source venv/bin/activate
 pip install -r requirements.txt
-```
-
-4. **Get Gemini API Key**
-
-- Visit: https://aistudio.google.com/app/apikey
-- Create a free API key
-- It's FREE with generous limits!
-
-5. **Set environment variables**
-
-```bash
-# Windows
-set GEMINI_API_KEY=your-api-key-here
-
-# macOS/Linux
-export GEMINI_API_KEY=your-api-key-here
-```
-
-6. **Run the server**
-
-```bash
+set GEMINI_API_KEY=AIza...   # or export on macOS/Linux
 python manage.py runserver
+# open http://localhost:8000
 ```
 
-7. **Open in browser**
+To use a local LLM instead of Gemini, set `LLM_PROVIDER=local` and point `LOCAL_LLM_URL` to your server (Ollama-compatible).
 
+---
+
+## Project Structure (short)
 ```
-http://localhost:8000
+backend/
+  api/                # REST + WebSocket logic, A2F parsing, LLM helpers
+  therapist_project/  # Django/Channels settings
+  templates/index.html
+  manage.py, requirements.txt
+frontend/
+  index.html          # Static build served via Django staticfiles
+  src/script.js       # Client logic (chat, STT/TTS, WS, A2F UI)
+  src/avatar.js       # Avatar animations
+Audio2Face-3D-Samples/
+  scripts/audio2face_3d_api_client/  # NVIDIA sample client (external)
 ```
 
 ---
 
-## 📁 Project Structure
-
-```
-deepfake-therapist/
-├── backend/
-│   ├── api/                    # API application
-│   │   ├── __init__.py
-│   │   ├── apps.py
-│   │   ├── consumers.py        # WebSocket consumers
-│   │   ├── routing.py          # WebSocket routes
-│   │   ├── serializers.py      # DRF serializers
-│   │   ├── urls.py             # REST API routes
-│   │   ├── utils.py            # Utilities (Gemini, cache, etc.)
-│   │   └── views.py            # REST views
-│   │
-│   ├── therapist_project/      # Django project settings
-│   │   ├── __init__.py
-│   │   ├── asgi.py             # ASGI config
-│   │   ├── settings.py         # Project settings
-│   │   ├── urls.py             # Main URL config
-│   │   └── wsgi.py             # WSGI config
-│   │
-│   ├── templates/              # Django templates
-│   │   └── index.html
-│   │
-│   ├── static/                 # Symlink to frontend/src
-│   ├── manage.py
-│   ├── requirements.txt
-│   └── .env.example
-│
-├── frontend/
-│   ├── index.html              # Main HTML file
-│   └── src/
-│       ├── script.js           # Main JavaScript
-│       ├── avatar.js           # Avatar animations
-│       └── therapist.png       # Avatar image
-│
-└── docs/
-    ├── README.md
-    ├── LOCAL_RUN.md
-    ├── architecture_diagram.png
-    └── viva_QnA.md
-```
+## What’s Done vs. Pending
+- **Done:** Chat UI with STT/TTS, streaming via Channels, Gemini/local LLM switch, caching + rate limiting, fallback responder, Audio2Face viewer for existing runs, basic health/metrics/TTS endpoints.
+- **In progress:** End-to-end Audio2Face generation (now callable via `/api/a2f/generate/` when TTS + NVIDIA creds are set), production hardening hooks (Redis channel layer env), and multi-session history retrieval.
 
 ---
 
-## 📡 API Documentation
-
-### REST Endpoints
-
-#### Health Check
-
-```http
-GET /api/health/
-```
-
-Response:
-
-```json
-{
-  "status": "healthy",
-  "service": "AI Therapist Backend",
-  "version": "1.0.0"
-}
-```
-
-#### Dialogue
-
-```http
-POST /api/dialogue/
-Content-Type: application/json
-
-{
-    "text": "Hello, I'm feeling stressed",
-    "api_key": "optional-gemini-api-key"
-}
-```
-
-Response:
-
-```json
-{
-  "response": "I hear you...",
-  "source": "gemini",
-  "latency_ms": 245
-}
-```
-
-#### Metrics
-
-```http
-GET /api/metrics/
-```
-
-Response:
-
-```json
-{
-  "total_requests": 100,
-  "gemini_requests": 85,
-  "fallback_requests": 15,
-  "latency_median_ms": 200
-}
-```
-
-### WebSocket
-
-```javascript
-// Connect
-ws://localhost:8000/ws/stream/
-
-// Send
-{"text": "Hello", "api_key": "optional"}
-
-// Receive
-{"type": "start", "source": "gemini"}
-{"type": "token", "content": "Hello "}
-{"type": "token", "content": "there!"}
-{"type": "done"}
-```
+## Deployment Notes
+- **Static assets:** `python manage.py collectstatic` with `STATIC_ROOT` set; serve via CDN/reverse proxy.
+- **ASGI/Channels:** For production, set `CHANNEL_REDIS_URL=redis://host:6379/0` and run with Daphne/Uvicorn + a process manager (and a Redis instance).
+- **TLS/Proxy:** Terminate TLS at a reverse proxy (Nginx/Traefik), set `SECURE_PROXY_SSL_HEADER` if needed, and configure `ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS`.
+- **A2F generation:** Install `google-cloud-texttospeech` and the NVIDIA sample dependencies, set `A2F_API_KEY`, `A2F_FUNCTION_ID`, and point `A2F_OUTPUT_DIR` to the A2F client folder so runs land where the viewer expects them.
 
 ---
 
-## ⚙️ Configuration
-
-### Environment Variables
-
-| Variable                      | Description           | Default          |
-| ----------------------------- | --------------------- | ---------------- |
-| `GEMINI_API_KEY`              | Google Gemini API key | Required         |
-| `GEMINI_MODEL`                | Model to use          | gemini-2.0-flash |
-| `DEBUG`                       | Debug mode            | True             |
-| `RATE_LIMIT_CALLS_PER_MINUTE` | API rate limit        | 10               |
-
-### .env Example
-
-```env
-DJANGO_SECRET_KEY=your-secret-key
-DEBUG=True
-GEMINI_API_KEY=AIzaSy...
-GEMINI_MODEL=gemini-2.0-flash
-RATE_LIMIT_CALLS_PER_MINUTE=10
-```
-
----
-
-## 📸 Screenshots
-
-_Screenshots will be added during the demo presentation_
-
----
-
-## 🎓 Academic Notes
-
-This project was developed as a **10-credit BTech Major Project** demonstrating:
-
-1. **Full-stack Development**: Django backend + JavaScript frontend
-2. **AI Integration**: Google Gemini AI for natural language processing
-3. **Real-time Communication**: WebSocket for streaming responses
-4. **Modern UI/UX**: Glassmorphism design, animations, accessibility
-5. **Software Engineering**: Clean architecture, documentation, error handling
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- Google Gemini AI for the language model
-- Tailwind CSS for the design system
-- Django community for the excellent framework
-
----
-
-<div align="center">
-
-**Built with ❤️ for mental wellness support**
-
-</div>
+## Testing
+- Django tests live in `backend/api/tests.py`. Run: `cd backend && python manage.py test`.
