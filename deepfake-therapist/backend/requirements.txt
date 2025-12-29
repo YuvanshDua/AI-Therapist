@@ -1,0 +1,20 @@
+# Django Core
+Django>=4.2,<5.0
+djangorestframework>=3.14.0
+django-cors-headers>=4.3.0
+
+# ASGI & WebSocket support
+channels>=4.0.0
+daphne>=4.0.0
+
+# Google Gemini AI (NEW SDK - Free tier available!)
+google-genai>=1.0.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# HTTP client (for fallback APIs)
+httpx>=0.25.0
+
+# Rate limiting
+django-ratelimit>=4.1.0

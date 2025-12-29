@@ -1,0 +1,43 @@
+# Local tooling and envs
+env312/
+
+# Python / Django
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.log
+*.sqlite3
+db.sqlite3
+backend/db.sqlite3
+backend/.env
+local_settings.py
+staticfiles/
+media/
+
+# Virtual environments
+.env
+.env.local
+.envrc
+.python-version
+venv/
+.venv/
+env/
+
+# Node / frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dist/
+build/
+.parcel-cache/
+.cache/
+
+# IDE / OS
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db

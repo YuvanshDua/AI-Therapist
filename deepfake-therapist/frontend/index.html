@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="MindfulAI - Your Personal AI Therapist for Mental Wellness Support">
+    <title>MindfulAI | AI Therapist</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind Config -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        serif: ['Playfair Display', 'serif'],
+                    },
+                    colors: {
+                        primary: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            200: '#bbf7d0',
+                            300: '#86efac',
+                            400: '#4ade80',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            800: '#166534',
+                            900: '#14532d',
+                        },
+                        accent: {
+                            50: '#fdf4ff',
+                            100: '#fae8ff',
+                            200: '#f5d0fe',
+                            300: '#f0abfc',
+                            400: '#e879f9',
+                            500: '#d946ef',
+                            600: '#c026d3',
+                            700: '#a21caf',
+                        },
+                        calm: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a',
+                        }
+                    },
+                    animation: {
+                        'float': 'float 6s ease-in-out infinite',
+                        'glow': 'glow 2s ease-in-out infinite',
+                        'pulse-slow': 'pulse 3s ease-in-out infinite',
+                        'fade-in': 'fadeIn 0.5s ease-out',
+                        'slide-up': 'slideUp 0.5s ease-out',
+                        'wave': 'wave 1.5s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-10px)' },
+                        },
+                        glow: {
+                            '0%, 100%': { boxShadow: '0 0 20px rgba(34, 197, 94, 0.3)' },
+                            '50%': { boxShadow: '0 0 40px rgba(34, 197, 94, 0.6)' },
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        },
+                        slideUp: {
+                            '0%': { opacity: '0', transform: 'translateY(20px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        },
+                        wave: {
+                            '0%, 100%': { transform: 'scaleY(1)' },
+                            '50%': { transform: 'scaleY(1.5)' },
+                        },
+                    },
+                },
+            },
+        }
+    </script>
+    
+    <!-- Custom Styles -->
+    <style>
+        * {
+            scroll-behavior: smooth;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .glass-morphism {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .dark .glass-morphism {
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+        }
+        
+        .dark .gradient-bg {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        }
+        
+        .text-gradient {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .avatar-ring {
+            background: conic-gradient(from 0deg, #22c55e, #3b82f6, #a855f7, #ec4899, #22c55e);
+            padding: 4px;
+            border-radius: 50%;
+        }
+        
+        .avatar-ring.speaking {
+            animation: glow 1.2s ease-in-out infinite;
+        }
+        
+        .message-bubble {
+            position: relative;
+        }
+        
+        .message-bubble.user::after {
+            content: '';
+            position: absolute;
+            right: -8px;
+            top: 50%;
+            transform: translateY(-50%);
+            border: 8px solid transparent;
+            border-left-color: #22c55e;
+        }
+        
+        .message-bubble.ai::before {
+            content: '';
+            position: absolute;
+            left: -8px;
+            top: 50%;
+            transform: translateY(-50%);
+            border: 8px solid transparent;
+            border-right-color: #f1f5f9;
+        }
+        
+        .dark .message-bubble.ai::before {
+            border-right-color: #334155;
+        }
+        
+        .typing-indicator span {
+            animation: wave 1s ease-in-out infinite;
+        }
+        
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.1s;
+        }
+        
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.2s;
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        
+        .dark ::-webkit-scrollbar-thumb {
+            background: #475569;
+        }
+        
+        /* Mic button animation */
+        .recording-active {
+            animation: pulse 1s ease-in-out infinite;
+        }
+        
+        .recording-active::before {
+            content: '';
+            position: absolute;
+            inset: -4px;
+            border-radius: 50%;
+            background: rgba(239, 68, 68, 0.3);
+            animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+        }
+        
+        @keyframes ping {
+            75%, 100% {
+                transform: scale(1.5);
+                opacity: 0;
+            }
+        }
+        
+        /* Voice visualization */
+        .voice-bar {
+            width: 4px;
+            background: linear-gradient(to top, #22c55e, #3b82f6);
+            border-radius: 2px;
+            transition: height 0.1s ease;
+        }
+    </style>
+</head>
+
+<body class="min-h-screen gradient-bg transition-colors duration-300">
+    <!-- Navigation -->
+    <nav class="fixed top-0 left-0 right-0 z-50 px-4 py-3">
+        <div class="max-w-6xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <div class="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
+                    <span class="text-2xl">🧠</span>
+                </div>
+                <span class="text-white font-semibold text-lg hidden sm:block">MindfulAI</span>
+            </div>
+            
+            <div class="flex items-center gap-3">
+                <!-- Connection Status -->
+                <div id="connection-status" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur text-white text-sm">
+                    <span id="status-dot" class="w-2 h-2 rounded-full bg-green-400"></span>
+                    <span id="status-text">Connected</span>
+                </div>
+                
+                <!-- Dark Mode Toggle -->
+                <button id="theme-toggle" class="p-2 rounded-lg bg-white/10 backdrop-blur text-white hover:bg-white/20 transition-colors">
+                    <svg id="sun-icon" class="w-5 h-5 hidden" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"/>
+                    </svg>
+                    <svg id="moon-icon" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/>
+                    </svg>
+                </button>
+                
+                <!-- Settings -->
+                <button id="settings-toggle" class="p-2 rounded-lg bg-white/10 backdrop-blur text-white hover:bg-white/20 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Settings Panel (Hidden by default) -->
+    <div id="settings-panel" class="fixed top-16 right-4 z-50 w-80 glass-morphism rounded-2xl shadow-2xl p-6 hidden animate-fade-in">
+        <h3 class="text-lg font-semibold text-gray-800 dark:text-white mb-4">Settings</h3>
+        
+        <!-- API Key -->
+        <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">
+                Gemini API Key
+            </label>
+            <input type="password" id="api-key-input" 
+                   class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-calm-800 text-gray-800 dark:text-white text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+                   placeholder="AIza...">
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-primary-500 hover:underline">Get free key →</a>
+            </p>
+        </div>
+        
+        <!-- Voice Selection -->
+        <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">
+                Voice
+            </label>
+            <select id="voice-select" 
+                    class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-calm-800 text-gray-800 dark:text-white text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                <option>Loading voices...</option>
+            </select>
+        </div>
+
+        <!-- Audio2Face Controls -->
+        <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">
+                Audio2Face Output
+            </label>
+            <div class="flex items-center gap-2">
+                <button id="a2f-load"
+                        class="px-3 py-2 text-xs rounded-lg bg-gray-100 dark:bg-calm-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-calm-600 transition-colors">
+                    Load Latest
+                </button>
+                <button id="a2f-play"
+                        class="px-3 py-2 text-xs rounded-lg bg-primary-500 text-white hover:bg-primary-600 transition-colors disabled:opacity-50"
+                        disabled>
+                    Play
+                </button>
+                <button id="a2f-stop"
+                        class="px-3 py-2 text-xs rounded-lg bg-gray-200 dark:bg-calm-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-calm-500 transition-colors disabled:opacity-50"
+                        disabled>
+                    Stop
+                </button>
+            </div>
+            <p id="a2f-status" class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                Not loaded
+            </p>
+        </div>
+        
+        <!-- TTS Toggle -->
+        <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-600 dark:text-gray-300">Voice Responses</span>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="tts-toggle" class="sr-only peer" checked>
+                <div class="w-11 h-6 bg-gray-200 peer-focus:ring-2 peer-focus:ring-primary-500 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-500"></div>
+            </label>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <main class="pt-20 pb-8 px-4 min-h-screen flex flex-col">
+        <div class="max-w-4xl mx-auto w-full flex-1 flex flex-col">
+            
+            <!-- Header -->
+            <header class="text-center mb-6 animate-fade-in">
+                <h1 class="text-3xl md:text-4xl font-serif font-semibold text-white mb-2">
+                    Your AI Wellness Companion
+                </h1>
+                <p class="text-white/70 text-sm md:text-base max-w-lg mx-auto">
+                    A safe space to express your thoughts and feelings. I'm here to listen and support you.
+                </p>
+            </header>
+            
+            <!-- Chat Container -->
+            <div class="flex-1 glass-morphism rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-slide-up">
+                
+                <!-- Avatar Section -->
+                <div class="p-6 border-b border-gray-200/50 dark:border-gray-700/50 flex flex-col items-center">
+                    <!-- Animated Avatar Ring -->
+                    <div id="avatar-ring" class="avatar-ring mb-4">
+                        <div id="avatar-container" class="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden bg-gray-100 dark:bg-calm-700">
+                            <!-- Avatar will be inserted here -->
+                        </div>
+                    </div>
+                    
+                    <!-- AI Status -->
+                    <div id="ai-status" class="flex items-center gap-2 text-sm">
+                        <span class="text-gray-600 dark:text-gray-300">Dr. MindfulAI</span>
+                        <span id="ai-state" class="px-2 py-0.5 rounded-full text-xs bg-primary-100 text-primary-700 dark:bg-primary-900/50 dark:text-primary-300">
+                            Ready to help
+                        </span>
+                    </div>
+                    
+                    <!-- Voice Visualization (shown when listening/speaking) -->
+                    <div id="voice-viz" class="hidden flex items-end justify-center gap-1 h-8 mt-3">
+                        <div class="voice-bar h-2"></div>
+                        <div class="voice-bar h-4"></div>
+                        <div class="voice-bar h-6"></div>
+                        <div class="voice-bar h-8"></div>
+                        <div class="voice-bar h-6"></div>
+                        <div class="voice-bar h-4"></div>
+                        <div class="voice-bar h-2"></div>
+                    </div>
+                </div>
+                
+                <!-- Chat Messages -->
+                <div id="chat-container" class="flex-1 overflow-y-auto p-6 space-y-4 min-h-[200px] max-h-[400px]">
+                    <!-- Welcome Message -->
+                    <div class="flex gap-3 animate-fade-in">
+                        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center flex-shrink-0">
+                            <span class="text-white text-sm">🧠</span>
+                        </div>
+                        <div class="message-bubble ai bg-gray-100 dark:bg-calm-700 rounded-2xl rounded-tl-none px-4 py-3 max-w-[80%]">
+                            <p class="text-gray-800 dark:text-gray-200 text-sm leading-relaxed">
+                                Hello! I'm your AI wellness companion. I'm here to provide a supportive space for you to share your thoughts and feelings. Whether you're dealing with stress, anxiety, or just need someone to talk to — I'm here to listen. How are you feeling today?
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Input Section -->
+                <div class="p-4 border-t border-gray-200/50 dark:border-gray-700/50">
+                    <!-- Cooldown Bar -->
+                    <div id="cooldown-bar" class="hidden mb-3">
+                        <div class="h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                            <div id="cooldown-progress" class="h-full bg-gradient-to-r from-primary-400 to-primary-600 transition-all duration-100"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-3">
+                        <!-- Mic Button -->
+                        <button id="mic-button" 
+                                class="relative w-14 h-14 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-center group">
+                            <svg id="mic-icon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
+                            </svg>
+                            <svg id="stop-icon" class="w-6 h-6 hidden" fill="currentColor" viewBox="0 0 24 24">
+                                <rect x="6" y="6" width="12" height="12" rx="2"/>
+                            </svg>
+                        </button>
+                        
+                        <!-- Text Input -->
+                        <div class="flex-1 relative">
+                            <input type="text" id="text-input" 
+                                   class="w-full px-5 py-3.5 pr-12 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-calm-800 text-gray-800 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+                                   placeholder="Type your message or click the mic to speak...">
+                            
+                            <!-- Send Button -->
+                            <button id="send-button" 
+                                    class="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-primary-500 text-white hover:bg-primary-600 transition-colors">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Quick Prompts -->
+                    <div class="flex flex-wrap gap-2 mt-3">
+                        <button class="quick-prompt px-3 py-1.5 text-xs rounded-full bg-gray-100 dark:bg-calm-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-calm-600 transition-colors">
+                            I'm feeling stressed 😰
+                        </button>
+                        <button class="quick-prompt px-3 py-1.5 text-xs rounded-full bg-gray-100 dark:bg-calm-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-calm-600 transition-colors">
+                            I need someone to talk to 💭
+                        </button>
+                        <button class="quick-prompt px-3 py-1.5 text-xs rounded-full bg-gray-100 dark:bg-calm-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-calm-600 transition-colors">
+                            Help me relax 🧘
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Footer -->
+            <footer class="mt-6 text-center">
+                <p class="text-white/50 text-xs">
+                    ⚠️ MindfulAI is an AI assistant, not a replacement for professional mental health care.
+                    <a href="#" class="underline hover:text-white/70">Learn more</a>
+                </p>
+            </footer>
+        </div>
+    </main>
+    
+    <!-- Scripts -->
+    <script src="/static/src/avatar.js"></script>
+    <script src="/static/src/script.js"></script>
+</body>
+</html>
