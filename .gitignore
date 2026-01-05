@@ -18,6 +18,7 @@ media/
 
 # Virtual environments
 .env
+.env312
 .env.local
 .envrc
 .python-version
