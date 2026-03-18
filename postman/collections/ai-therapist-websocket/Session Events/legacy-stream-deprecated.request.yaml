@@ -1,0 +1,5 @@
+$kind: websocket-request
+name: 'Legacy Stream (Deprecated)'
+url: 'ws://localhost:8000/ws/stream/'
+order: 2000
+description: 'Legacy WebSocket endpoint. Deprecated — use Session Events Stream instead. Sends a deprecation notice on connect.'

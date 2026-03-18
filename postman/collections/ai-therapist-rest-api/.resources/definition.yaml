@@ -1,0 +1,11 @@
+$kind: collection
+name: AI Therapist - REST API
+variables:
+  - key: baseUrl
+    value: 'http://localhost:8000'
+  - key: session_id
+    value: ''
+  - key: last_transcript
+    value: "I've been feeling anxious lately."
+  - key: last_assistant_text
+    value: ''

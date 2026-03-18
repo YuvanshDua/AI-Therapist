@@ -1,110 +1,120 @@
-# MindfulAI – AI Therapist Avatar
+# Voice Therapist MVP (Django + Ollama + Whisper + Piper)
 
-A web experience that pairs a calming chat UI with an AI “therapist.” Users can type or speak, get streamed responses from Gemini or a local LLM, hear TTS playback, and see an animated avatar. An optional Audio2Face viewer can play pre-generated lip-sync + emotion data.
+A local-first voice AI therapist web app with a live-call UI.
 
----
+## What this build includes
+- Django + DRF backend with SQLite persistence
+- Session/message models (`TherapySession`, `Message`)
+- Modular service layer:
+  - `api/services/transcription_service.py`
+  - `api/services/ollama_service.py`
+  - `api/services/tts_service.py`
+  - `api/services/safety_service.py`
+  - `api/services/memory_service.py`
+  - `api/services/vision_service.py` (phase-2 stub)
+- Channels WebSocket endpoint for session events: `/ws/session/<session_id>/`
+- Voice call UI (Django template + vanilla JS):
+  - start/end session
+  - mic record/stop (MediaRecorder)
+  - webcam preview (display-only)
+  - transcript panel
+  - AI thinking/speaking indicator
+  - audio playback of generated TTS
 
-## Overview
-- **Purpose:** Always-available, judgment-free space for light mental-wellness support.
-- **Modes:** Text chat, voice input (Web Speech API), voice output (SpeechSynthesis), streaming responses.
-- **Providers:** Google Gemini (default) or a local Ollama-compatible model with caching and rate limiting.
-- **Avatar:** Image-based avatar with speaking/emotion cues; optional Audio2Face playback for 3D mouth/emotion tracks.
-- **Safety:** Clear “not a replacement for therapy” positioning, rate limits, fallback replies when LLM is down.
-- **(New) A2F pipeline:** Kick off Audio2Face generation from fresh text (Google TTS → NVIDIA A2F client) when credentials are configured.
-- **(New) Sessions:** Server issues/accepts a `session_id` so you can fetch conversation history per session.
+## API endpoints
+- `POST /api/session/start/`
+- `POST /api/session/end/`
+- `GET /api/session/<session_id>/`
+- `POST /api/transcribe/`
+- `POST /api/respond/`
+- `POST /api/tts/`
+- `GET /api/health/`
 
----
+## Project layout (key files)
+- `backend/therapist_project/settings.py`
+- `backend/api/models.py`
+- `backend/api/views.py`
+- `backend/api/urls.py`
+- `backend/api/consumers.py`
+- `backend/api/routing.py`
+- `backend/api/services/`
+- `backend/templates/index.html`
+- `frontend/src/call.js`
+- `frontend/src/call.css`
 
-## Features
-- **Conversational core:** REST + WebSocket streaming; fallback template replies if LLM unavailable.
-- **Voice pipeline:** Browser STT for input, browser TTS for output with selectable voices, rate/pitch controls.
-- **Provider choice:** Switch between Gemini and local LLM per request; user-supplied API key supported.
-- **Resilience:** In-memory cache, rate limiter, metrics endpoint, and cooldowns on the client.
-- **A2F viewer:** Load latest Audio2Face run (frames + emotions + wav) and drive the avatar with playback controls.
+## Local setup
 
----
-
-## Architecture
-- **Frontend:** Vanilla HTML/JS with Tailwind CDN. WebSocket client for streaming, STT/TTS in-browser, avatar animations, Audio2Face playback controls.
-- **Backend:** Django + DRF + Channels (ASGI). REST endpoints for dialogue/health/metrics/TTS/A2F; WebSocket consumer for streamed LLM tokens.
-- **LLM integration:** Gemini via `google-genai`; optional local model via Ollama-compatible HTTP API. Template fallback to ensure responses.
-- **Storage:** No persistent chat storage; SQLite only for Django defaults. A2F output read from a folder path.
-
----
-
-## API Quick Reference
-- `GET /api/health/` – Health status.
-- `POST /api/dialogue/` – `{ text, api_key?, provider? }` → `{ response, source, latency_ms }`.
-- `GET /api/metrics/` – Request counts, latency stats, rate-limit count.
-- `POST /api/tts/` – Uses Google Cloud TTS if credentials set; falls back to browser TTS hint.
-- `GET /api/a2f/latest/` – Latest parsed Audio2Face run (frames, emotions, audio URL).
-- `GET /api/a2f/audio/<run_id>/` – Stream the generated wav for a run.
-- `POST /api/a2f/generate/` – Generate a new Audio2Face run from text (requires A2F creds); returns payload for the new run.
-- `GET /api/session/<session_id>/` – Fetch stored conversation turns for that session.
-- WebSocket `ws://<host>/ws/stream/` – Send `{ text, api_key?, provider? }`, receive start/token/done events.
-
----
-
-## Configuration
-Set via environment variables (see `backend/.env.example`):
-- `GEMINI_API_KEY` / `GEMINI_MODEL` – Gemini access.
-- `LLM_PROVIDER` – `gemini` (default) or `local`.
-- `LOCAL_LLM_URL`, `LOCAL_LLM_MODEL`, `LOCAL_NUM_PREDICT`, `LOCAL_TEMPERATURE` – Local model settings.
-- `RATE_LIMIT_CALLS_PER_MINUTE` – Per-IP throttle.
-- `A2F_OUTPUT_DIR` – Folder containing Audio2Face runs (`animation_frames.csv`, optional emotion CSV, wav).
-- `A2F_CONFIG_PATH` – YAML config for A2F client (defaults to `config/config_claire.yml` under output dir).
-- `A2F_API_KEY`, `A2F_FUNCTION_ID` – Credentials for NVIDIA Audio2Face-3D NIM.
-- `A2F_RUN_TIMEOUT` – Seconds to wait for a generation run.
-- `CHANNEL_REDIS_URL` – If set, Channels uses Redis instead of in-memory (recommended for production).
-- `DJANGO_SECRET_KEY`, `DEBUG` – Standard Django settings.
-
----
-
-## Run Locally
+### 1) Python dependencies
 ```bash
-cd backend
-python -m venv venv
-venv\Scripts\activate  # or source venv/bin/activate
+cd deepfake-therapist/backend
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-set GEMINI_API_KEY=AIza...   # or export on macOS/Linux
+```
+
+### 2) Environment config
+```bash
+cp .env.example .env
+# edit .env with your local model/binary paths
+```
+
+### 3) Run DB migrations
+```bash
+python manage.py migrate
+```
+
+### 4) Start Django
+```bash
 python manage.py runserver
-# open http://localhost:8000
+```
+Open: `http://127.0.0.1:8000`
+
+## Running local model services
+
+### Ollama
+```bash
+ollama serve
+ollama pull llama3.1:8b
 ```
 
-To use a local LLM instead of Gemini, set `LLM_PROVIDER=local` and point `LOCAL_LLM_URL` to your server (Ollama-compatible).
+### Whisper options
 
----
+#### Option A: faster-whisper (default in code)
+- No separate daemon needed.
+- Make sure `WHISPER_ENGINE=faster_whisper` in `.env`.
 
-## Project Structure (short)
+#### Option B: whisper.cpp CLI
+```bash
+# Example model download (adjust as needed)
+# ./models/download-ggml-model.sh base.en
 ```
-backend/
-  api/                # REST + WebSocket logic, A2F parsing, LLM helpers
-  therapist_project/  # Django/Channels settings
-  templates/index.html
-  manage.py, requirements.txt
-frontend/
-  index.html          # Static build served via Django staticfiles
-  src/script.js       # Client logic (chat, STT/TTS, WS, A2F UI)
-  src/avatar.js       # Avatar animations
-Audio2Face-3D-Samples/
-  scripts/audio2face_3d_api_client/  # NVIDIA sample client (external)
+Set in `.env`:
+- `WHISPER_ENGINE=whisper_cpp`
+- `WHISPER_CPP_BIN=<path to whisper-cli>`
+- `WHISPER_CPP_MODEL_PATH=<path to ggml model>`
+- `FFMPEG_BIN=ffmpeg`
+
+### TTS options
+
+#### Option A: Piper (recommended)
+```bash
+# install piper binary (system-specific)
+# download a piper .onnx voice model
 ```
+Set in `.env`:
+- `TTS_ENGINE=piper`
+- `PIPER_BIN=<path to piper>`
+- `PIPER_MODEL_PATH=<path to .onnx model>`
 
----
+#### Option B: Coqui
+```bash
+pip install TTS
+```
+Set in `.env`:
+- `TTS_ENGINE=coqui`
+- `COQUI_MODEL_NAME=tts_models/en/ljspeech/tacotron2-DDC`
 
-## What’s Done vs. Pending
-- **Done:** Chat UI with STT/TTS, streaming via Channels, Gemini/local LLM switch, caching + rate limiting, fallback responder, Audio2Face viewer for existing runs, basic health/metrics/TTS endpoints.
-- **In progress:** End-to-end Audio2Face generation (now callable via `/api/a2f/generate/` when TTS + NVIDIA creds are set), production hardening hooks (Redis channel layer env), and multi-session history retrieval.
-
----
-
-## Deployment Notes
-- **Static assets:** `python manage.py collectstatic` with `STATIC_ROOT` set; serve via CDN/reverse proxy.
-- **ASGI/Channels:** For production, set `CHANNEL_REDIS_URL=redis://host:6379/0` and run with Daphne/Uvicorn + a process manager (and a Redis instance).
-- **TLS/Proxy:** Terminate TLS at a reverse proxy (Nginx/Traefik), set `SECURE_PROXY_SSL_HEADER` if needed, and configure `ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS`.
-- **A2F generation:** Install `google-cloud-texttospeech` and the NVIDIA sample dependencies, set `A2F_API_KEY`, `A2F_FUNCTION_ID`, and point `A2F_OUTPUT_DIR` to the A2F client folder so runs land where the viewer expects them.
-
----
-
-## Testing
-- Django tests live in `backend/api/tests.py`. Run: `cd backend && python manage.py test`.
+## Notes
+- Safety override is rule-based and activates on self-harm crisis patterns.
+- Rolling memory uses `rolling_summary + recent messages` instead of full transcript for each LLM call.
+- Webcam frame analysis is intentionally stubbed for phase-2; structured visual signals are exposed in UI placeholders.

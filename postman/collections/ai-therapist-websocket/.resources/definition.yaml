@@ -1,0 +1,5 @@
+$kind: collection
+name: AI Therapist - WebSocket
+variables:
+  - key: session_id
+    value: ''

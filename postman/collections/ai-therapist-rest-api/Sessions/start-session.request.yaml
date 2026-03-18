@@ -1,0 +1,22 @@
+$kind: http-request
+name: Start Session
+method: POST
+url: '{{baseUrl}}/api/session/start/'
+order: 1000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "metadata": {
+        "user_agent": "postman",
+        "notes": "test session"
+      }
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const json = pm.response.json(); pm.collectionVariables.set("session_id", json.session_id); pm.test("Session created", () => { pm.response.to.have.status(201); pm.expect(json.session_id).to.be.a("string"); });

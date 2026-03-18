@@ -1,0 +1,5 @@
+$kind: websocket-request
+name: Session Events Stream
+url: 'ws://localhost:8000/ws/session/{{session_id}}/'
+order: 1000
+description: 'Connect to receive real-time session lifecycle events (thinking, speaking, transcript_ready, response_ready, etc.) for a specific session.'

@@ -1,0 +1,20 @@
+$kind: http-request
+name: Generate Response
+method: POST
+url: '{{baseUrl}}/api/respond/'
+order: 2000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "session_id": "{{session_id}}",
+      "transcript": "{{last_transcript}}"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Response generated", () => { pm.response.to.have.status(200); const json = pm.response.json(); pm.expect(json.assistant_text).to.be.a("string"); }); const json = pm.response.json(); if (json.assistant_text) { pm.collectionVariables.set("last_assistant_text", json.assistant_text); }

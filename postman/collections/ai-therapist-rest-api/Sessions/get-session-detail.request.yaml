@@ -1,0 +1,10 @@
+$kind: http-request
+name: Get Session Detail
+method: GET
+url: '{{baseUrl}}/api/session/{{session_id}}/'
+order: 2000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Session detail returned", () => { pm.response.to.have.status(200); const json = pm.response.json(); pm.expect(json.id).to.be.a("string"); pm.expect(json.messages).to.be.an("array"); });

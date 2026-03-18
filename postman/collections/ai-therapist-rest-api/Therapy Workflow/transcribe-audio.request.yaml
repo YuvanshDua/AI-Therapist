@@ -1,0 +1,24 @@
+$kind: http-request
+name: Transcribe Audio
+method: POST
+url: '{{baseUrl}}/api/transcribe/'
+order: 1000
+body:
+  type: formdata
+  content:
+    - key: session_id
+      type: text
+      value: '{{session_id}}'
+    - key: audio
+      type: file
+      src: ''
+scripts:
+  - type: beforeRequest
+    language: text/javascript
+    code: |-
+      pm.collectionVariables.set("last_transcript", "I have been feeling really anxious and overwhelmed lately. I am not sure how to cope with everything.");
+      pm.execution.skipRequest();
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Transcription returned", () => { pm.response.to.have.status(200); const json = pm.response.json(); pm.expect(json.transcript).to.be.a("string"); }); const json = pm.response.json(); if (json.transcript) { pm.collectionVariables.set("last_transcript", json.transcript); }

@@ -16,8 +16,10 @@
 const CONFIG = {
     API_BASE: '',
     DIALOGUE_ENDPOINT: '/api/dialogue/',
+    THERAPY_SESSION_ENDPOINT: '/api/therapy-session/',
+    ASR_ENDPOINT: '/api/asr/',
     HEALTH_ENDPOINT: '/api/health/',
-    WS_ENDPOINT: `ws://${window.location.host}/ws/stream/`,
+    WS_ENDPOINT: `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/stream/`,
     A2F_ENDPOINT: '/api/a2f/latest/',
     COOLDOWN_MS: 3000,
 };
@@ -44,6 +46,7 @@ const state = {
     provider: 'gemini',
     speechRate: 0.95,
     speechPitch: 1.0,
+    synopsisMode: true,
     streamingId: 0,
     a2f: {
         runId: '',
@@ -625,6 +628,11 @@ async function processUserInput(text) {
     
     // Store in history
     state.messageHistory.push({ role: 'user', content: text });
+
+    if (state.synopsisMode) {
+        await processUserInputWithPipeline(text);
+        return;
+    }
     
     // Try WebSocket first
     if (state.websocket?.readyState === WebSocket.OPEN) {
@@ -677,6 +685,63 @@ async function processUserInput(text) {
         
     } catch (error) {
         console.error('Error:', error);
+        addMessage("I'm having trouble connecting right now. Please try again in a moment.", 'ai');
+        setAIState('Connection issue', 'error');
+    } finally {
+        state.isProcessing = false;
+        startCooldown();
+    }
+}
+
+async function processUserInputWithPipeline(text) {
+    try {
+        const response = await fetch(CONFIG.THERAPY_SESSION_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                text: text,
+                api_key: state.apiKey,
+                provider: state.provider,
+                session_id: state.sessionId,
+                voice_name: 'en-US-Neural2-F',
+                speaking_rate: state.speechRate,
+                generate_audio: true,
+                generate_avatar: false,
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(response.status === 429 ? 'Please wait before sending another message' : 'Server error');
+        }
+
+        const data = await response.json();
+        if (data.session_id) {
+            state.sessionId = data.session_id;
+        }
+
+        addMessage(data.response, 'ai');
+        state.messageHistory.push({ role: 'assistant', content: data.response });
+
+        if (data.audio) {
+            const audio = new Audio(`data:audio/mpeg;base64,${data.audio}`);
+            elements.avatarRing?.classList.add('speaking');
+            setAIState('Speaking...', 'speaking');
+            showVoiceVisualization(true);
+            audio.onended = () => {
+                elements.avatarRing?.classList.remove('speaking');
+                setAIState('Ready to help', 'ready');
+                showVoiceVisualization(false);
+            };
+            audio.play().catch(() => {
+                if (state.ttsEnabled) speakText(data.response);
+            });
+        } else if (state.ttsEnabled) {
+            speakText(data.response);
+        }
+
+        setAIState('Ready to help', 'ready');
+    } catch (error) {
+        console.error('Pipeline error:', error);
         addMessage("I'm having trouble connecting right now. Please try again in a moment.", 'ai');
         setAIState('Connection issue', 'error');
     } finally {

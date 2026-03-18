@@ -1,0 +1,19 @@
+$kind: http-request
+name: End Session
+method: POST
+url: '{{baseUrl}}/api/session/end/'
+order: 3000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "session_id": "{{session_id}}"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Session ended", () => { pm.response.to.have.status(200); const json = pm.response.json(); pm.expect(json.status).to.eql("ended"); });

@@ -1,0 +1,22 @@
+# Use this workspace to collaborate
+workspace:
+  id: 90359744-184b-44a6-b378-737b8d14d080
+
+localResources:
+  specs:
+    - ../Audio2Face-3D-Samples/proto/protobuf_files/nvidia_ace.a2f.v1.proto
+    - ../Audio2Face-3D-Samples/proto/protobuf_files/nvidia_ace.a2f_authoring.v1.proto
+    - ../Audio2Face-3D-Samples/proto/protobuf_files/nvidia_ace.animation_data.v1.proto
+    - ../Audio2Face-3D-Samples/proto/protobuf_files/nvidia_ace.animation_id.v1.proto
+    - ../Audio2Face-3D-Samples/proto/protobuf_files/nvidia_ace.audio.v1.proto
+    - ../Audio2Face-3D-Samples/proto/protobuf_files/nvidia_ace.controller.v1.proto
+    - ../Audio2Face-3D-Samples/proto/protobuf_files/nvidia_ace.emotion_aggregate.v1.proto
+    - ../Audio2Face-3D-Samples/proto/protobuf_files/nvidia_ace.emotion_with_timecode.v1.proto
+    - ../Audio2Face-3D-Samples/proto/protobuf_files/nvidia_ace.health.proto
+    - ../Audio2Face-3D-Samples/proto/protobuf_files/nvidia_ace.services.a2f.v1.proto
+    - ../Audio2Face-3D-Samples/proto/protobuf_files/nvidia_ace.services.a2f_authoring.v1.proto
+    - ../Audio2Face-3D-Samples/proto/protobuf_files/nvidia_ace.services.a2f_controller.v1.proto
+    - ../Audio2Face-3D-Samples/proto/protobuf_files/nvidia_ace.services.a2x_export_config.v1.proto
+    - ../Audio2Face-3D-Samples/proto/protobuf_files/nvidia_ace.services.animation_controller.v1.proto
+    - ../Audio2Face-3D-Samples/proto/protobuf_files/nvidia_ace.services.animation_data.v1.proto
+    - ../Audio2Face-3D-Samples/proto/protobuf_files/nvidia_ace.status.v1.proto
