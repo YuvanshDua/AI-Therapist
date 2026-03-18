@@ -38,6 +38,12 @@ const state = {
         sourceNode: null,
         rafId: null,
         simulatedAtMs: 0,
+        canvas: null,
+        ctx: null,
+        dpr: 1,
+        phaseA: 0,
+        phaseB: 0,
+        visualLevel: 0.08,
     },
     vad: {
         audioContext: null,
@@ -61,6 +67,7 @@ const dom = {
     assistantAudio: document.getElementById("assistantAudio"),
     avatarRing: document.getElementById("avatarRing"),
     voiceBlob: document.getElementById("voiceBlob"),
+    voiceOrbCanvas: document.getElementById("voiceOrbCanvas"),
     sessionStatus: document.getElementById("sessionStatus"),
     aiDot: document.getElementById("aiDot"),
     aiIndicatorWrap: document.getElementById("aiIndicatorWrap"),
@@ -193,13 +200,179 @@ function setAvatarMouth(openness) {
 }
 
 function applyBlobIntensity(level) {
-    if (!dom.voiceBlob) {
+    state.blob.visualLevel = Math.max(0, Math.min(1, Number(level) || 0));
+    drawVoiceOrb(state.blob.visualLevel, performance.now(), state.assistantSpeaking);
+}
+
+function resizeVoiceOrbCanvas() {
+    const canvas = state.blob.canvas || dom.voiceOrbCanvas;
+    if (!canvas) {
+        return false;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) {
+        return false;
+    }
+
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    const width = Math.max(120, Math.round(rect.width * dpr));
+    const height = Math.max(120, Math.round(rect.height * dpr));
+
+    if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+    }
+
+    state.blob.dpr = dpr;
+    return true;
+}
+
+function ensureVoiceOrbCanvas() {
+    if (state.blob.ctx && state.blob.canvas) {
+        resizeVoiceOrbCanvas();
+        return true;
+    }
+
+    if (!dom.voiceOrbCanvas) {
+        return false;
+    }
+
+    const ctx = dom.voiceOrbCanvas.getContext("2d");
+    if (!ctx) {
+        return false;
+    }
+
+    state.blob.canvas = dom.voiceOrbCanvas;
+    state.blob.ctx = ctx;
+    resizeVoiceOrbCanvas();
+    return true;
+}
+
+function traceOrbPath(ctx, cx, cy, radius, wobble, phase, shapeBias) {
+    const points = 110;
+    for (let i = 0; i <= points; i += 1) {
+        const a = (i / points) * Math.PI * 2;
+        const harmonicA = Math.sin(a * (3.0 + shapeBias) + phase);
+        const harmonicB = Math.sin(a * (5.0 + shapeBias * 0.45) - phase * 1.17);
+        const harmonicC = Math.cos(a * (8.0 + shapeBias * 0.28) + phase * 0.45);
+        const r = radius + wobble * (0.6 * harmonicA + 0.28 * harmonicB + 0.12 * harmonicC);
+        const x = cx + Math.cos(a) * r;
+        const y = cy + Math.sin(a) * r;
+        if (i === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    }
+    ctx.closePath();
+}
+
+function fillOrbLayer(ctx, cx, cy, radius, wobble, phase, shapeBias, colorA, colorB, colorC, alpha) {
+    ctx.save();
+    ctx.beginPath();
+    traceOrbPath(ctx, cx, cy, radius, wobble, phase, shapeBias);
+    const gradient = ctx.createRadialGradient(cx - radius * 0.16, cy - radius * 0.2, radius * 0.15, cx, cy, radius * 1.18);
+    gradient.addColorStop(0.0, colorA);
+    gradient.addColorStop(0.58, colorB);
+    gradient.addColorStop(1.0, colorC);
+    ctx.fillStyle = gradient;
+    ctx.globalAlpha = alpha;
+    ctx.fill();
+    ctx.restore();
+}
+
+function drawVoiceOrb(level, nowMs, isSpeaking) {
+    if (!ensureVoiceOrbCanvas()) {
         return;
     }
-    const scale = 0.9 + level * 0.42;
-    const glow = 0.18 + level * 0.82;
-    dom.voiceBlob.style.setProperty("--blob-scale", scale.toFixed(3));
-    dom.voiceBlob.style.setProperty("--blob-glow", glow.toFixed(3));
+
+    const canvas = state.blob.canvas;
+    const ctx = state.blob.ctx;
+    if (!canvas || !ctx) {
+        return;
+    }
+
+    resizeVoiceOrbCanvas();
+
+    const width = canvas.width;
+    const height = canvas.height;
+    const cx = width / 2;
+    const cy = height / 2;
+    const minDim = Math.min(width, height);
+    const clamped = Math.max(0, Math.min(1, Number(level) || 0));
+    const t = (nowMs || performance.now()) * 0.001;
+    const speakingBoost = isSpeaking ? 1 : 0.42;
+
+    state.blob.phaseA += 0.018 + clamped * 0.06 * speakingBoost;
+    state.blob.phaseB += 0.013 + clamped * 0.05 * speakingBoost;
+
+    const breathe = 0.5 + Math.sin(t * 1.8 + state.blob.phaseA * 0.32) * 0.5;
+    const baseRadius = minDim * (0.2 + 0.018 * breathe + clamped * 0.045);
+    const wobble = minDim * (0.008 + clamped * 0.048 * speakingBoost);
+    const haloRadius = baseRadius * (2.25 + clamped * 0.65);
+
+    ctx.clearRect(0, 0, width, height);
+
+    const haloGradient = ctx.createRadialGradient(cx, cy, baseRadius * 0.25, cx, cy, haloRadius);
+    haloGradient.addColorStop(0, "rgba(123, 247, 255, 0.44)");
+    haloGradient.addColorStop(0.45, "rgba(84, 164, 252, 0.20)");
+    haloGradient.addColorStop(1, "rgba(36, 82, 146, 0)");
+    ctx.fillStyle = haloGradient;
+    ctx.beginPath();
+    ctx.arc(cx, cy, haloRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalCompositeOperation = "lighter";
+    fillOrbLayer(
+        ctx,
+        cx,
+        cy,
+        baseRadius * 1.16,
+        wobble * 1.35,
+        t * 1.65 + state.blob.phaseA,
+        0.4,
+        "rgba(162, 255, 255, 0.86)",
+        "rgba(80, 188, 252, 0.52)",
+        "rgba(44, 94, 181, 0.18)",
+        0.64
+    );
+    fillOrbLayer(
+        ctx,
+        cx,
+        cy,
+        baseRadius * 0.95,
+        wobble,
+        -t * 1.28 + state.blob.phaseB,
+        0.9,
+        "rgba(208, 255, 255, 0.9)",
+        "rgba(98, 214, 255, 0.66)",
+        "rgba(48, 105, 196, 0.24)",
+        0.74
+    );
+    fillOrbLayer(
+        ctx,
+        cx,
+        cy,
+        baseRadius * 0.68,
+        wobble * 0.66,
+        t * 1.9 - state.blob.phaseA * 0.5,
+        1.5,
+        "rgba(241, 255, 255, 0.96)",
+        "rgba(152, 241, 255, 0.8)",
+        "rgba(73, 156, 236, 0.2)",
+        0.87
+    );
+    ctx.globalCompositeOperation = "source-over";
+
+    const coreGlow = ctx.createRadialGradient(cx - baseRadius * 0.2, cy - baseRadius * 0.18, baseRadius * 0.1, cx, cy, baseRadius * 0.95);
+    coreGlow.addColorStop(0, "rgba(255, 255, 255, 0.9)");
+    coreGlow.addColorStop(0.6, "rgba(167, 236, 255, 0.24)");
+    coreGlow.addColorStop(1, "rgba(20, 52, 107, 0)");
+    ctx.fillStyle = coreGlow;
+    ctx.beginPath();
+    ctx.arc(cx, cy, baseRadius * 0.95, 0, Math.PI * 2);
+    ctx.fill();
 }
 
 function ensureBlobAudioAnalyser() {
@@ -258,7 +431,8 @@ function blobTick() {
         const t = Date.now() / 1000;
         level = 0.22 + Math.abs(Math.sin(t * 9.0)) * 0.45;
     }
-    applyBlobIntensity(level);
+    state.blob.visualLevel += (level - state.blob.visualLevel) * 0.36;
+    drawVoiceOrb(state.blob.visualLevel, performance.now(), true);
     state.blob.rafId = window.requestAnimationFrame(blobTick);
 }
 
@@ -275,7 +449,8 @@ function stopBlobPulse() {
         window.cancelAnimationFrame(state.blob.rafId);
         state.blob.rafId = null;
     }
-    applyBlobIntensity(0.04);
+    state.blob.visualLevel = 0.06;
+    drawVoiceOrb(0.06, performance.now(), false);
 }
 
 function stopAvatarAnimation() {
@@ -1095,6 +1270,13 @@ function bindEvents() {
         dom.clearErrorsBtn.addEventListener("click", clearErrors);
     }
 
+    window.addEventListener("resize", () => {
+        if (!ensureVoiceOrbCanvas()) {
+            return;
+        }
+        drawVoiceOrb(state.blob.visualLevel, performance.now(), state.assistantSpeaking);
+    });
+
     window.addEventListener("beforeunload", () => {
         stopContinuousListening();
         setAvatarSpeaking(false);
@@ -1135,6 +1317,7 @@ function boot() {
     setControlState(false);
     setAssistantReply("Waiting for session to start.");
     setAIState("", "AI idle");
+    ensureVoiceOrbCanvas();
     setAvatarSpeaking(false);
     setAvatarMouth(0);
     verifyBackend();

@@ -4,95 +4,85 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Local voice AI therapist call UI">
+    <meta name="description" content="Calm local-first voice therapist call UI">
     <meta name="csrf-token" content="{{ csrf_token }}">
-    <title>Voice Therapist</title>
+    <title>Therapy Voice Space</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{% static 'src/call.css' %}?v=20260318-10">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'src/call.css' %}?v=20260318-12">
 </head>
 <body>
+<div class="bg-aurora" aria-hidden="true"></div>
+<div class="bg-grid" aria-hidden="true"></div>
+
 <div class="app-shell">
-    <header class="call-header">
-        <div class="title-wrap">
+    <header class="app-header">
+        <div class="brand-block">
+            <p class="eyebrow">Therapy Voice Line</p>
             <h1>AI Therapist</h1>
+            <p class="subtitle">A calmer call-style space for continuous listening and natural voice replies.</p>
         </div>
-        <div class="status-wrap">
+
+        <div class="header-status">
             <div class="status-chip" id="sessionStatus" data-tone="idle">Idle</div>
-            <div class="indicator-wrap" id="aiIndicatorWrap" data-state="idle">
-                <span class="dot" id="aiDot"></span>
+            <div class="indicator" id="aiIndicatorWrap" data-state="idle">
+                <span class="dot" id="aiDot" aria-hidden="true"></span>
                 <span id="aiIndicatorText">AI idle</span>
             </div>
-            <button id="themeToggleBtn" class="btn ghost" type="button" aria-label="Toggle dark mode">Dark Mode</button>
+            <button id="themeToggleBtn" class="btn btn-ghost" type="button" aria-label="Toggle theme">Dark Mode</button>
         </div>
     </header>
 
-    <main class="call-layout">
-        <section class="main-panel">
-            <div class="panel call-card">
-                <div id="avatarRing" class="call-avatar-ring" aria-live="polite">
-                    <div class="blob-stage">
-                        <div id="voiceBlob" class="voice-blob">
-                            <span class="voice-blob-core"></span>
-                            <span class="voice-blob-orbit orbit-a"></span>
-                            <span class="voice-blob-orbit orbit-b"></span>
-                        </div>
+    <main class="call-grid">
+        <section class="card orb-card">
+            <div id="avatarRing" class="orb-shell" aria-live="polite">
+                <div class="orb-stage">
+                    <div id="voiceBlob" class="voice-orb" role="img" aria-label="Voice activity orb">
+                        <canvas id="voiceOrbCanvas" class="voice-orb-canvas"></canvas>
                     </div>
                 </div>
-                <div class="call-copy">
-                    <h2>Audio Call</h2>
-                    <p>No camera, no tap-to-talk. A live voice blob pulses naturally with assistant speech.</p>
-                </div>
             </div>
+            <p class="orb-note">Speak normally. The orb breathes and pulses with assistant speech.</p>
 
-            <section class="panel assistant-panel">
-                <div class="panel-head">
-                    <h2>Assistant Reply</h2>
-                </div>
-                <div class="field-wrap">
-                    <textarea id="assistantResponseField" rows="5" readonly>Waiting for session to start.</textarea>
-                    <p id="assistantText" hidden>Waiting for session to start.</p>
-                </div>
-                <div class="field-wrap">
-                    <label for="assistantAudio">Playback</label>
-                    <audio id="assistantAudio" controls></audio>
-                </div>
-            </section>
+            <div class="control-row">
+                <button id="startSessionBtn" class="btn btn-primary">Start Session</button>
+                <button id="endSessionBtn" class="btn btn-danger" disabled>End Session</button>
+            </div>
+            <p id="autoListenHint" class="hint">Auto-listening is off.</p>
         </section>
 
-        <aside class="side-panel">
-            <section class="panel controls-panel">
-                <div class="panel-head">
-                    <h2>Session Controls</h2>
-                </div>
-                <div class="btn-col">
-                    <button id="startSessionBtn" class="btn primary">Start Session</button>
-                    <button id="endSessionBtn" class="btn danger" disabled>End Session</button>
-                </div>
-                <p id="autoListenHint" class="hint">Auto-listening is off.</p>
-            </section>
+        <section class="card response-card">
+            <div class="card-head">
+                <h2>Assistant Reply</h2>
+                <p>Latest generated reply text and playback.</p>
+            </div>
+            <textarea id="assistantResponseField" rows="6" readonly>Waiting for session to start.</textarea>
+            <p id="assistantText" hidden>Waiting for session to start.</p>
+            <label for="assistantAudio" class="label">Playback</label>
+            <audio id="assistantAudio" controls></audio>
+        </section>
 
-            <section class="panel transcript-panel">
-                <div class="panel-head">
-                    <h2>Conversation</h2>
-                </div>
-                <div class="log" id="transcriptLog"></div>
-            </section>
+        <section class="card transcript-card">
+            <div class="card-head">
+                <h2>Conversation</h2>
+                <p>Live transcript timeline.</p>
+            </div>
+            <div class="log" id="transcriptLog"></div>
+        </section>
 
-            <section class="panel error-panel" id="errorPanel" hidden>
-                <div class="error-head">
-                    <h2>Errors</h2>
-                    <button id="clearErrorsBtn" class="btn ghost" type="button">Clear</button>
-                </div>
-                <div id="errorLog" class="error-log" role="status" aria-live="polite">
-                    <div class="error-empty">No errors yet.</div>
-                </div>
-            </section>
-        </aside>
+        <section class="card error-card" id="errorPanel" hidden>
+            <div class="error-head">
+                <h2>Errors</h2>
+                <button id="clearErrorsBtn" class="btn btn-ghost" type="button">Clear</button>
+            </div>
+            <div id="errorLog" class="error-log" role="status" aria-live="polite">
+                <div class="error-empty">No errors yet.</div>
+            </div>
+        </section>
     </main>
 </div>
 
-<script src="{% static 'src/call.js' %}?v=20260318-10"></script>
+<script src="{% static 'src/call.js' %}?v=20260318-12"></script>
 </body>
 </html>
