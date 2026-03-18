@@ -1,7 +1,0 @@
-grpcio-tools
-protobuf==5.28.1
-pydantic
-grpcio
-numpy
-scipy
-matplotlib

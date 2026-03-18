@@ -7,6 +7,18 @@ const API = {
     health: "/api/health/",
 };
 
+const THEME_STORAGE_KEY = "voice-therapist-theme";
+
+const VAD = {
+    pollMs: 120,
+    startRms: 0.022,
+    stopRms: 0.014,
+    speechConfirmMs: 220,
+    silenceStopMs: 950,
+    minUtteranceMs: 700,
+    maxUtteranceMs: 15000,
+};
+
 const state = {
     sessionId: null,
     mediaStream: null,
@@ -14,26 +26,46 @@ const state = {
     recordingStream: null,
     recordingOwnsStream: false,
     recordingStartedAtMs: 0,
-    audioChunks: [],
     isRecording: false,
+    recordingStarting: false,
     ws: null,
-    hasVideo: false,
+    pipelineBusy: false,
+    assistantSpeaking: false,
+    continuousListening: false,
+    blob: {
+        audioContext: null,
+        analyser: null,
+        sourceNode: null,
+        rafId: null,
+        simulatedAtMs: 0,
+    },
+    vad: {
+        audioContext: null,
+        analyser: null,
+        sourceNode: null,
+        intervalId: null,
+        speechMs: 0,
+        silenceMs: 0,
+        lastTs: 0,
+    },
 };
 
 const dom = {
     startSessionBtn: document.getElementById("startSessionBtn"),
     endSessionBtn: document.getElementById("endSessionBtn"),
-    micBtn: document.getElementById("micBtn"),
-    webcamPreview: document.getElementById("webcamPreview"),
+    themeToggleBtn: document.getElementById("themeToggleBtn"),
+    autoListenHint: document.getElementById("autoListenHint"),
     transcriptLog: document.getElementById("transcriptLog"),
     assistantResponseField: document.getElementById("assistantResponseField"),
     assistantText: document.getElementById("assistantText"),
     assistantAudio: document.getElementById("assistantAudio"),
+    avatarRing: document.getElementById("avatarRing"),
+    voiceBlob: document.getElementById("voiceBlob"),
     sessionStatus: document.getElementById("sessionStatus"),
     aiDot: document.getElementById("aiDot"),
     aiIndicatorWrap: document.getElementById("aiIndicatorWrap"),
     aiIndicatorText: document.getElementById("aiIndicatorText"),
-    visualSignals: document.getElementById("visualSignals"),
+    errorPanel: document.getElementById("errorPanel"),
     errorLog: document.getElementById("errorLog"),
     clearErrorsBtn: document.getElementById("clearErrorsBtn"),
 };
@@ -50,6 +82,10 @@ function addError(message) {
         return;
     }
 
+    if (dom.errorPanel) {
+        dom.errorPanel.hidden = false;
+    }
+
     const empty = dom.errorLog.querySelector(".error-empty");
     if (empty) {
         empty.remove();
@@ -63,10 +99,44 @@ function addError(message) {
 }
 
 function clearErrors() {
+    if (dom.errorPanel) {
+        dom.errorPanel.hidden = true;
+    }
     if (!dom.errorLog) {
         return;
     }
     dom.errorLog.innerHTML = '<div class="error-empty">No errors yet.</div>';
+}
+
+function applyTheme(theme) {
+    const nextTheme = theme === "dark" ? "dark" : "light";
+    document.documentElement.dataset.theme = nextTheme;
+    if (dom.themeToggleBtn) {
+        dom.themeToggleBtn.textContent = nextTheme === "dark" ? "Light Mode" : "Dark Mode";
+    }
+}
+
+function initializeTheme() {
+    let saved = null;
+    try {
+        saved = window.localStorage.getItem(THEME_STORAGE_KEY);
+    } catch (_error) {
+        saved = null;
+    }
+
+    const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    applyTheme(saved || (prefersDark ? "dark" : "light"));
+}
+
+function toggleTheme() {
+    const current = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+    const next = current === "dark" ? "light" : "dark";
+    applyTheme(next);
+    try {
+        window.localStorage.setItem(THEME_STORAGE_KEY, next);
+    } catch (_error) {
+        // Ignore storage write failures.
+    }
 }
 
 function setAssistantReply(text) {
@@ -103,6 +173,123 @@ function setAIState(type, text) {
     if (dom.aiIndicatorText) {
         dom.aiIndicatorText.textContent = String(text || "");
     }
+}
+
+function setAvatarSpeaking(isSpeaking) {
+    if (!dom.avatarRing) {
+        return;
+    }
+    dom.avatarRing.classList.toggle("speaking", Boolean(isSpeaking));
+    if (isSpeaking) {
+        startBlobPulse();
+    } else {
+        stopBlobPulse();
+    }
+}
+
+function setAvatarMouth(openness) {
+    const level = Math.max(0, Math.min(1, Number(openness) || 0));
+    applyBlobIntensity(level);
+}
+
+function applyBlobIntensity(level) {
+    if (!dom.voiceBlob) {
+        return;
+    }
+    const scale = 0.9 + level * 0.42;
+    const glow = 0.18 + level * 0.82;
+    dom.voiceBlob.style.setProperty("--blob-scale", scale.toFixed(3));
+    dom.voiceBlob.style.setProperty("--blob-glow", glow.toFixed(3));
+}
+
+function ensureBlobAudioAnalyser() {
+    if (state.blob.analyser || !dom.assistantAudio) {
+        return true;
+    }
+
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) {
+        return false;
+    }
+
+    try {
+        state.blob.audioContext = state.blob.audioContext || new AudioCtx();
+        if (state.blob.audioContext.state === "suspended") {
+            state.blob.audioContext.resume().catch(() => {});
+        }
+
+        state.blob.sourceNode = state.blob.audioContext.createMediaElementSource(dom.assistantAudio);
+        state.blob.analyser = state.blob.audioContext.createAnalyser();
+        state.blob.analyser.fftSize = 1024;
+        state.blob.analyser.smoothingTimeConstant = 0.82;
+        state.blob.sourceNode.connect(state.blob.analyser);
+        state.blob.analyser.connect(state.blob.audioContext.destination);
+        return true;
+    } catch (_error) {
+        state.blob.analyser = null;
+        return false;
+    }
+}
+
+function readBlobAudioLevel() {
+    if (!state.blob.analyser) {
+        return 0;
+    }
+    const analyser = state.blob.analyser;
+    const data = new Uint8Array(analyser.fftSize);
+    analyser.getByteTimeDomainData(data);
+    let sum = 0;
+    for (let i = 0; i < data.length; i += 1) {
+        const centered = (data[i] - 128) / 128;
+        sum += centered * centered;
+    }
+    return Math.sqrt(sum / data.length);
+}
+
+function blobTick() {
+    if (!state.assistantSpeaking) {
+        return;
+    }
+    let level = 0.18;
+    const hasAnalyser = ensureBlobAudioAnalyser();
+    if (hasAnalyser && state.blob.analyser) {
+        level = Math.min(1, Math.max(0.08, readBlobAudioLevel() * 5.0));
+    } else {
+        const t = Date.now() / 1000;
+        level = 0.22 + Math.abs(Math.sin(t * 9.0)) * 0.45;
+    }
+    applyBlobIntensity(level);
+    state.blob.rafId = window.requestAnimationFrame(blobTick);
+}
+
+function startBlobPulse() {
+    if (state.blob.rafId) {
+        return;
+    }
+    state.blob.simulatedAtMs = Date.now();
+    state.blob.rafId = window.requestAnimationFrame(blobTick);
+}
+
+function stopBlobPulse() {
+    if (state.blob.rafId) {
+        window.cancelAnimationFrame(state.blob.rafId);
+        state.blob.rafId = null;
+    }
+    applyBlobIntensity(0.04);
+}
+
+function stopAvatarAnimation() {
+    stopBlobPulse();
+    setAvatarMouth(0);
+}
+
+function stepAvatarAnimation() {
+    startBlobPulse();
+}
+
+function startAvatarAnimation(_payload) {
+    stopAvatarAnimation();
+    startBlobPulse();
 }
 
 function appendLine(role, text) {
@@ -203,7 +390,7 @@ function handleSessionEvent(event, payload) {
         setAIState("error", payload.detail || "Error");
         addError(payload.detail || "Session event error received.");
     } else if (event === "response_ready") {
-        setAIState("", "AI reply ready");
+        setAIState("listening", "Listening automatically");
     }
 }
 
@@ -234,40 +421,32 @@ async function requestMedia() {
         throw new Error("Browser does not support getUserMedia.");
     }
 
-    let stream;
-
     try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-        state.hasVideo = true;
-    } catch (_videoError) {
-        try {
-            stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            state.hasVideo = false;
-            appendLine("system", "Camera unavailable. Continuing with audio only.");
-        } catch (audioError) {
-            throw new Error(describeMediaError(audioError));
-        }
-    }
+        const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+            },
+            video: false,
+        });
 
-    state.mediaStream = stream;
-    if (dom.webcamPreview) {
-        dom.webcamPreview.srcObject = stream;
+        if (!stream.getAudioTracks().length) {
+            throw new Error("No microphone audio track is available in the stream.");
+        }
+
+        state.mediaStream = stream;
+        return stream;
+    } catch (error) {
+        throw new Error(describeMediaError(error));
     }
-    return stream;
 }
 
 function stopMedia() {
-    if (!state.mediaStream) {
-        return;
+    if (state.mediaStream) {
+        state.mediaStream.getTracks().forEach((track) => track.stop());
     }
-
-    state.mediaStream.getTracks().forEach((track) => track.stop());
     state.mediaStream = null;
-    state.hasVideo = false;
-
-    if (dom.webcamPreview) {
-        dom.webcamPreview.srcObject = null;
-    }
 
     if (state.recordingStream && state.recordingOwnsStream) {
         state.recordingStream.getTracks().forEach((track) => track.stop());
@@ -283,9 +462,150 @@ function setControlState(activeSession) {
     if (dom.endSessionBtn) {
         dom.endSessionBtn.disabled = !activeSession;
     }
-    if (dom.micBtn) {
-        dom.micBtn.disabled = !activeSession;
-        dom.micBtn.textContent = "Start Talking";
+    if (dom.autoListenHint) {
+        dom.autoListenHint.textContent = activeSession
+            ? "Auto-listening is on. Speak naturally; pauses are detected automatically."
+            : "Auto-listening is off.";
+    }
+}
+
+function cleanupAudioAnalysis() {
+    if (state.vad.intervalId) {
+        window.clearInterval(state.vad.intervalId);
+        state.vad.intervalId = null;
+    }
+
+    if (state.vad.sourceNode) {
+        try {
+            state.vad.sourceNode.disconnect();
+        } catch (_error) {
+            // Ignore disconnect failures.
+        }
+        state.vad.sourceNode = null;
+    }
+
+    if (state.vad.analyser) {
+        try {
+            state.vad.analyser.disconnect();
+        } catch (_error) {
+            // Ignore disconnect failures.
+        }
+        state.vad.analyser = null;
+    }
+
+    if (state.vad.audioContext) {
+        state.vad.audioContext.close().catch(() => {
+            // Ignore close failures.
+        });
+        state.vad.audioContext = null;
+    }
+
+    state.vad.speechMs = 0;
+    state.vad.silenceMs = 0;
+    state.vad.lastTs = 0;
+}
+
+async function startContinuousListening() {
+    if (state.continuousListening || !state.sessionId || !state.mediaStream) {
+        return;
+    }
+
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) {
+        addError("Web Audio API is not available in this browser. Auto-listening cannot start.");
+        return;
+    }
+
+    cleanupAudioAnalysis();
+
+    state.vad.audioContext = new AudioCtx();
+    if (state.vad.audioContext.state === "suspended") {
+        await state.vad.audioContext.resume().catch(() => {
+            // Some browsers may auto-resume on first speech.
+        });
+    }
+
+    state.vad.sourceNode = state.vad.audioContext.createMediaStreamSource(state.mediaStream);
+    state.vad.analyser = state.vad.audioContext.createAnalyser();
+    state.vad.analyser.fftSize = 1024;
+    state.vad.analyser.smoothingTimeConstant = 0.85;
+    state.vad.sourceNode.connect(state.vad.analyser);
+
+    state.continuousListening = true;
+    state.vad.lastTs = performance.now();
+    state.vad.intervalId = window.setInterval(runVadTick, VAD.pollMs);
+    setAIState("listening", "Listening automatically");
+}
+
+function stopContinuousListening() {
+    state.continuousListening = false;
+    cleanupAudioAnalysis();
+}
+
+function sampleRms(analyser) {
+    const data = new Uint8Array(analyser.fftSize);
+    analyser.getByteTimeDomainData(data);
+
+    let sum = 0;
+    for (let i = 0; i < data.length; i += 1) {
+        const centered = (data[i] - 128) / 128;
+        sum += centered * centered;
+    }
+
+    return Math.sqrt(sum / data.length);
+}
+
+function runVadTick() {
+    if (!state.continuousListening || !state.sessionId || !state.vad.analyser) {
+        return;
+    }
+
+    const now = performance.now();
+    const deltaMs = Math.max(1, now - (state.vad.lastTs || now));
+    state.vad.lastTs = now;
+
+    if (state.pipelineBusy || state.assistantSpeaking) {
+        state.vad.speechMs = 0;
+        state.vad.silenceMs = 0;
+        return;
+    }
+
+    const rms = sampleRms(state.vad.analyser);
+
+    if (state.isRecording) {
+        const durationMs = Date.now() - state.recordingStartedAtMs;
+
+        if (rms <= VAD.stopRms) {
+            state.vad.silenceMs += deltaMs;
+        } else {
+            state.vad.silenceMs = 0;
+        }
+
+        if (
+            (state.vad.silenceMs >= VAD.silenceStopMs && durationMs >= VAD.minUtteranceMs) ||
+            durationMs >= VAD.maxUtteranceMs
+        ) {
+            stopRecording();
+            state.vad.silenceMs = 0;
+        }
+
+        return;
+    }
+
+    if (rms >= VAD.startRms) {
+        state.vad.speechMs += deltaMs;
+    } else {
+        state.vad.speechMs = Math.max(0, state.vad.speechMs - deltaMs * 0.7);
+    }
+
+    if (state.vad.speechMs >= VAD.speechConfirmMs) {
+        state.vad.speechMs = 0;
+        state.vad.silenceMs = 0;
+        startRecording().catch((error) => {
+            const message = error && error.message ? error.message : "Recording setup failed.";
+            addError(`Recording setup failed: ${message}`);
+            setAIState("error", "Recording failed");
+        });
     }
 }
 
@@ -299,19 +619,21 @@ async function startSession() {
             body: JSON.stringify({
                 metadata: {
                     client: "web-call-ui",
-                    vision_stub_enabled: true,
+                    vision_stub_enabled: false,
                 },
             }),
         });
 
         state.sessionId = payload.session_id;
         connectSessionSocket(state.sessionId);
-
         setControlState(true);
+
+        await startContinuousListening();
+
         setStatus(`Session active: ${state.sessionId}`, "active");
-        setAssistantReply("Session started. Press Start Talking to begin.");
-        setAIState("", "AI idle");
-        appendLine("system", "Session started.");
+        setAssistantReply("Session started. Speak naturally; I will auto-detect when you start and stop talking.");
+        setAIState("listening", "Listening automatically");
+        appendLine("system", "Session started. Auto-listening is enabled.");
     } catch (error) {
         const message = error && error.message ? error.message : "Start failed.";
         setStatus(`Failed to start session: ${message}`, "error");
@@ -323,6 +645,8 @@ async function startSession() {
 
 async function endSession() {
     try {
+        stopContinuousListening();
+
         if (state.isRecording) {
             stopRecording();
         }
@@ -341,6 +665,10 @@ async function endSession() {
 
         stopMedia();
         state.sessionId = null;
+        state.pipelineBusy = false;
+        state.assistantSpeaking = false;
+        setAvatarSpeaking(false);
+        stopAvatarAnimation();
 
         setControlState(false);
         setStatus("Session ended", "ended");
@@ -369,7 +697,6 @@ function recorderCandidates() {
         return MediaRecorder.isTypeSupported(value);
     });
 
-    // Empty mimeType option lets browser pick a default, often the most stable path.
     supported.push("");
     return [...new Set(supported)];
 }
@@ -421,188 +748,174 @@ async function buildRecordingStreamOptions(baseStream) {
             });
         } else {
             freshAudio.getTracks().forEach((track) => track.stop());
-            addError("Fresh audio stream opened but contains no live audio track.");
         }
-    } catch (error) {
-        const message = error && error.message ? error.message : "Unknown mic capture error.";
-        addError(`Fresh audio capture unavailable, using fallback stream. ${message}`);
+    } catch (_error) {
+        // Fallback candidates below handle this path.
     }
 
     return options.concat(recordingStreamCandidates(baseStream));
 }
 
 async function startRecording() {
-    if (!state.mediaStream || state.isRecording || !state.sessionId) {
+    if (!state.mediaStream || state.isRecording || !state.sessionId || state.recordingStarting) {
         return;
     }
 
-    const candidates = recorderCandidates();
-    if (!candidates.length) {
-        const message = "MediaRecorder is not available in this browser.";
-        setStatus(message, "error");
-        setAIState("error", "Recording unavailable");
-        addError(message);
+    if (state.pipelineBusy || state.assistantSpeaking) {
         return;
     }
 
-    const streamOptions = await buildRecordingStreamOptions(state.mediaStream);
-    if (!streamOptions.length) {
-        const previewTracks = state.mediaStream.getAudioTracks().length;
-        const message = "Could not prepare an audio recording stream. Verify microphone permission/device.";
-        setStatus(message, "error");
-        setAIState("error", "Recording unavailable");
-        addError(`${message} preview_audio_tracks=${previewTracks}`);
-        return;
-    }
+    state.recordingStarting = true;
 
-    state.audioChunks = [];
-    const recordingChunks = [];
+    try {
+        const candidates = recorderCandidates();
+        if (!candidates.length) {
+            throw new Error("MediaRecorder is not available in this browser.");
+        }
 
-    let recorder = null;
-    let activeMimeType = "";
-    let activeStream = null;
-    let activeOwnsTracks = false;
-    let startErrorMessage = "";
+        const streamOptions = await buildRecordingStreamOptions(state.mediaStream);
+        if (!streamOptions.length) {
+            throw new Error("Could not prepare an audio recording stream. Verify microphone permission/device.");
+        }
 
-    for (const streamOption of streamOptions) {
-        for (const mimeType of candidates) {
-            try {
-                const attemptRecorder = mimeType
-                    ? new MediaRecorder(streamOption.stream, { mimeType })
-                    : new MediaRecorder(streamOption.stream);
+        const recordingChunks = [];
+        let recorder = null;
+        let activeMimeType = "";
+        let activeStream = null;
+        let activeOwnsTracks = false;
+        let startErrorMessage = "";
 
-                attemptRecorder.ondataavailable = (event) => {
-                    if (event.data && event.data.size > 0) {
-                        recordingChunks.push(event.data);
-                    }
-                };
+        for (const streamOption of streamOptions) {
+            for (const mimeType of candidates) {
+                try {
+                    const attemptRecorder = mimeType
+                        ? new MediaRecorder(streamOption.stream, { mimeType })
+                        : new MediaRecorder(streamOption.stream);
 
-                attemptRecorder.onerror = (event) => {
-                    const detail = event && event.error && event.error.message ? event.error.message : "Recorder runtime error.";
-                    setStatus(`Recorder error: ${detail}`, "error");
-                    setAIState("error", "Recorder error");
-                    addError(`Recorder runtime error: ${detail}`);
-                };
+                    attemptRecorder.ondataavailable = (event) => {
+                        if (event.data && event.data.size > 0) {
+                            recordingChunks.push(event.data);
+                        }
+                    };
 
-                attemptRecorder.start(1000);
+                    attemptRecorder.onerror = (event) => {
+                        const detail = event && event.error && event.error.message ? event.error.message : "Recorder runtime error.";
+                        addError(`Recorder runtime error: ${detail}`);
+                        setAIState("error", "Recorder error");
+                    };
 
-                recorder = attemptRecorder;
-                activeMimeType = mimeType;
-                activeStream = streamOption.stream;
-                activeOwnsTracks = streamOption.ownsTracks;
+                    attemptRecorder.start(1000);
+
+                    recorder = attemptRecorder;
+                    activeMimeType = mimeType;
+                    activeStream = streamOption.stream;
+                    activeOwnsTracks = streamOption.ownsTracks;
+                    break;
+                } catch (error) {
+                    startErrorMessage = error && error.message ? error.message : "MediaRecorder start failed.";
+                }
+            }
+
+            if (recorder) {
                 break;
-            } catch (error) {
-                startErrorMessage = error && error.message ? error.message : "MediaRecorder start failed.";
+            }
+
+            if (streamOption.ownsTracks) {
+                streamOption.stream.getTracks().forEach((track) => track.stop());
             }
         }
 
-        if (recorder) {
-            break;
+        if (!recorder) {
+            throw new Error(`MediaRecorder could not start on this browser. ${startErrorMessage}`);
         }
 
-        if (streamOption.ownsTracks) {
-            streamOption.stream.getTracks().forEach((track) => track.stop());
-        }
-    }
+        state.recorder = recorder;
+        state.recordingStream = activeStream;
+        state.recordingOwnsStream = activeOwnsTracks;
 
-    if (!recorder) {
-        const message = `MediaRecorder could not start on this browser. ${startErrorMessage}`;
-        setStatus(message, "error");
-        setAIState("error", "Recording unavailable");
-        addError(message);
-        return;
-    }
-    state.recorder = recorder;
-    state.recordingStream = activeStream;
-    state.recordingOwnsStream = activeOwnsTracks;
-    state.audioChunks = recordingChunks;
-
-    state.recorder.onstop = async () => {
-        const usedStream = state.recordingStream;
-        const usedOwnsTracks = state.recordingOwnsStream;
-        const usedTrackCount = usedStream ? usedStream.getTracks().length : 0;
-        const usedAudioTrack = usedStream ? usedStream.getAudioTracks()[0] : null;
-        const trackDetail = usedAudioTrack
-            ? `track_label=${usedAudioTrack.label || "unknown"} muted=${usedAudioTrack.muted} enabled=${usedAudioTrack.enabled} ready=${usedAudioTrack.readyState}`
-            : "track_label=none";
-        const durationMs = Math.max(0, Date.now() - state.recordingStartedAtMs);
-
-        state.isRecording = false;
-        if (dom.micBtn) {
-            dom.micBtn.textContent = "Start Talking";
-        }
-
-        // Give the browser a brief moment for final dataavailable events.
-        window.setTimeout(async () => {
+        state.recorder.onstop = async () => {
+            const usedStream = state.recordingStream;
+            const usedOwnsTracks = state.recordingOwnsStream;
+            const durationMs = Math.max(0, Date.now() - state.recordingStartedAtMs);
             const totalBytes = recordingChunks.reduce((sum, chunk) => sum + chunk.size, 0);
 
-            if (!state.sessionId || recordingChunks.length === 0 || totalBytes === 0) {
-                addError(
-                    `Recorder stopped but no audio chunks were captured. duration_ms=${durationMs} stream_tracks=${usedTrackCount} ${trackDetail}`
-                );
+            state.isRecording = false;
+
+            window.setTimeout(async () => {
+                if (!state.sessionId || recordingChunks.length === 0 || totalBytes === 0) {
+                    if (durationMs > 1200) {
+                        addError(`Recorder stopped with empty audio data. duration_ms=${durationMs}`);
+                    }
+                    if (usedStream && usedOwnsTracks) {
+                        usedStream.getTracks().forEach((track) => track.stop());
+                    }
+                    state.recordingStream = null;
+                    state.recordingOwnsStream = false;
+                    state.recorder = null;
+                    if (state.sessionId) {
+                        setAIState("listening", "Listening automatically");
+                    }
+                    return;
+                }
+
+                const blobType = activeMimeType || (recordingChunks[0] ? recordingChunks[0].type : "audio/webm");
+                const blob = new Blob(recordingChunks, { type: blobType });
+
+                if (durationMs < 400 || (blob.size < 700 && durationMs < 2000)) {
+                    if (usedStream && usedOwnsTracks) {
+                        usedStream.getTracks().forEach((track) => track.stop());
+                    }
+                    state.recordingStream = null;
+                    state.recordingOwnsStream = false;
+                    state.recorder = null;
+                    if (state.sessionId) {
+                        setAIState("listening", "Listening automatically");
+                    }
+                    return;
+                }
+
+                if (blob.size < 1024 && durationMs >= 1500) {
+                    addError(`Microphone captured near-zero audio data. bytes=${blob.size} duration_ms=${durationMs}`);
+                    if (usedStream && usedOwnsTracks) {
+                        usedStream.getTracks().forEach((track) => track.stop());
+                    }
+                    state.recordingStream = null;
+                    state.recordingOwnsStream = false;
+                    state.recorder = null;
+                    if (state.sessionId) {
+                        setAIState("listening", "Listening automatically");
+                    }
+                    return;
+                }
+
+                await processUtterance(blob);
+
                 if (usedStream && usedOwnsTracks) {
                     usedStream.getTracks().forEach((track) => track.stop());
                 }
                 state.recordingStream = null;
                 state.recordingOwnsStream = false;
                 state.recorder = null;
-                return;
-            }
 
-            const blobType = activeMimeType || (recordingChunks[0] ? recordingChunks[0].type : "audio/webm");
-            const blob = new Blob(recordingChunks, { type: blobType });
-
-            if (durationMs < 350) {
-                const message = "Recording too short. Hold the mic for at least 1 second.";
-                setStatus(message, "error");
-                setAIState("error", "Recording too short");
-                addError(`${message} (bytes=${blob.size}, duration_ms=${durationMs}, mime=${blobType || "unknown"})`);
-                if (usedStream && usedOwnsTracks) {
-                    usedStream.getTracks().forEach((track) => track.stop());
+                if (state.sessionId && !state.assistantSpeaking && !state.pipelineBusy) {
+                    setAIState("listening", "Listening automatically");
                 }
-                state.recordingStream = null;
-                state.recordingOwnsStream = false;
-                state.recorder = null;
-                return;
-            }
+            }, 220);
+        };
 
-            if (blob.size < 1024 && durationMs >= 1500) {
-                const message = "Microphone captured near-zero audio data. Check OS input device/mute settings.";
-                setStatus(message, "error");
-                setAIState("error", "No mic signal");
-                addError(`${message} (bytes=${blob.size}, duration_ms=${durationMs}, mime=${blobType || "unknown"}, ${trackDetail})`);
-                if (usedStream && usedOwnsTracks) {
-                    usedStream.getTracks().forEach((track) => track.stop());
-                }
-                state.recordingStream = null;
-                state.recordingOwnsStream = false;
-                state.recorder = null;
-                return;
-            }
-
-            await processUtterance(blob);
-
-            if (usedStream && usedOwnsTracks) {
-                usedStream.getTracks().forEach((track) => track.stop());
-            }
-            state.recordingStream = null;
-            state.recordingOwnsStream = false;
-            state.recorder = null;
-        }, 220);
-    };
-
-    state.isRecording = true;
-    state.recordingStartedAtMs = Date.now();
-    if (dom.micBtn) {
-        dom.micBtn.textContent = "Stop Talking";
+        state.isRecording = true;
+        state.recordingStartedAtMs = Date.now();
+        setAIState("listening", "Listening...");
+    } finally {
+        state.recordingStarting = false;
     }
-    setAIState("listening", "Listening...");
 }
 
 function stopRecording() {
     if (!state.recorder || !state.isRecording) {
         return;
     }
+
     try {
         if (state.recorder.state === "recording") {
             state.recorder.stop();
@@ -613,6 +926,12 @@ function stopRecording() {
 }
 
 async function processUtterance(audioBlob) {
+    if (!state.sessionId) {
+        return;
+    }
+
+    state.pipelineBusy = true;
+
     try {
         setAIState("listening", "Transcribing...");
 
@@ -627,10 +946,6 @@ async function processUtterance(audioBlob) {
 
         const transcript = (transcribeData.transcript || "").trim();
         if (!transcript) {
-            const message = "No speech detected. Try speaking closer to the mic.";
-            setStatus(message, "error");
-            setAIState("error", "No speech detected");
-            addError(message);
             return;
         }
 
@@ -645,11 +960,13 @@ async function processUtterance(audioBlob) {
             }),
         });
 
-        const assistantText = respondData.assistant_text || "";
+        const assistantText = (respondData.assistant_text || "").trim();
+        if (!assistantText) {
+            return;
+        }
+
         setAssistantReply(assistantText);
         appendLine("assistant", assistantText);
-
-        setAIState("speaking", "AI is speaking");
 
         const ttsData = await apiFetch(API.tts, {
             method: "POST",
@@ -660,9 +977,31 @@ async function processUtterance(audioBlob) {
         });
 
         if (dom.assistantAudio) {
-            dom.assistantAudio.src = ttsData.audio_url;
-            dom.assistantAudio.onended = () => setAIState("", "AI idle");
-            dom.assistantAudio.play().catch(() => {
+            const playbackUrl = ttsData.audio_url;
+
+            const handlePlaybackEnd = () => {
+                state.assistantSpeaking = false;
+                setAvatarSpeaking(false);
+                stopAvatarAnimation();
+                if (state.sessionId) {
+                    setAIState("listening", "Listening automatically");
+                } else {
+                    setAIState("", "AI idle");
+                }
+            };
+
+            dom.assistantAudio.onplay = () => {
+                state.assistantSpeaking = true;
+                setAvatarSpeaking(true);
+                startAvatarAnimation(null);
+                setAIState("speaking", "AI is speaking");
+            };
+            dom.assistantAudio.onended = handlePlaybackEnd;
+            dom.assistantAudio.onerror = handlePlaybackEnd;
+
+            dom.assistantAudio.src = playbackUrl;
+            await dom.assistantAudio.play().catch(() => {
+                handlePlaybackEnd();
                 setStatus("Audio ready. Press play if autoplay is blocked.", "active");
             });
         }
@@ -672,6 +1011,11 @@ async function processUtterance(audioBlob) {
         setAIState("error", "Pipeline error");
         addError(`Pipeline error: ${message}`);
         appendLine("system", `Pipeline error: ${message}`);
+    } finally {
+        state.pipelineBusy = false;
+        if (state.sessionId && !state.assistantSpeaking && !state.isRecording) {
+            setAIState("listening", "Listening automatically");
+        }
     }
 }
 
@@ -700,47 +1044,6 @@ function buildAudioFilename(audioBlob) {
     return "utterance.webm";
 }
 
-function toggleRecording() {
-    if (!state.sessionId) {
-        return;
-    }
-
-    if (state.isRecording) {
-        stopRecording();
-    } else {
-        startRecording().catch((error) => {
-            const message = error && error.message ? error.message : "Recording setup failed.";
-            setStatus(`Recording failed: ${message}`, "error");
-            setAIState("error", "Recording failed");
-            addError(`Recording setup failed: ${message}`);
-        });
-    }
-}
-
-function initializeVisionHook() {
-    setInterval(() => {
-        if (!state.sessionId || !state.mediaStream || !dom.visualSignals) {
-            return;
-        }
-
-        const lines = state.hasVideo
-            ? [
-                "face_detected: true",
-                "looking_away: false",
-                "low_light: false",
-                "user_present: true",
-            ]
-            : [
-                "face_detected: unavailable",
-                "looking_away: unavailable",
-                "low_light: unavailable",
-                "user_present: true",
-            ];
-
-        dom.visualSignals.innerHTML = lines.map((line) => `<span>${line}</span>`).join("");
-    }, 8000);
-}
-
 async function verifyBackend() {
     try {
         const health = await apiFetch(API.health, { method: "GET" });
@@ -761,7 +1064,6 @@ function checkRequiredUI() {
     const required = [
         "startSessionBtn",
         "endSessionBtn",
-        "micBtn",
         "sessionStatus",
         "aiIndicatorText",
         "transcriptLog",
@@ -775,6 +1077,7 @@ function checkRequiredUI() {
         addError(`UI is missing required elements: ${missing.join(", ")}`);
         return false;
     }
+
     return true;
 }
 
@@ -785,14 +1088,23 @@ function bindEvents() {
     if (dom.endSessionBtn) {
         dom.endSessionBtn.addEventListener("click", endSession);
     }
-    if (dom.micBtn) {
-        dom.micBtn.addEventListener("click", toggleRecording);
+    if (dom.themeToggleBtn) {
+        dom.themeToggleBtn.addEventListener("click", toggleTheme);
     }
     if (dom.clearErrorsBtn) {
         dom.clearErrorsBtn.addEventListener("click", clearErrors);
     }
 
     window.addEventListener("beforeunload", () => {
+        stopContinuousListening();
+        setAvatarSpeaking(false);
+        stopAvatarAnimation();
+        if (state.blob.audioContext) {
+            state.blob.audioContext.close().catch(() => {});
+            state.blob.audioContext = null;
+            state.blob.analyser = null;
+            state.blob.sourceNode = null;
+        }
         if (state.ws) {
             state.ws.close();
         }
@@ -811,6 +1123,7 @@ function bindEvents() {
 }
 
 function boot() {
+    initializeTheme();
     clearErrors();
     bindEvents();
 
@@ -822,7 +1135,8 @@ function boot() {
     setControlState(false);
     setAssistantReply("Waiting for session to start.");
     setAIState("", "AI idle");
-    initializeVisionHook();
+    setAvatarSpeaking(false);
+    setAvatarMouth(0);
     verifyBackend();
 }
 

@@ -9,75 +9,90 @@
     <title>Voice Therapist</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{% static 'src/call.css' %}?v=20260318-3">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'src/call.css' %}?v=20260318-10">
 </head>
 <body>
 <div class="app-shell">
-    <header class="top-bar">
-        <div>
-            <h1>Voice Therapist</h1>
-            <p>Simple local call UI for Ollama + Whisper + Piper</p>
+    <header class="call-header">
+        <div class="title-wrap">
+            <h1>AI Therapist</h1>
         </div>
-        <div class="status-chip" id="sessionStatus" data-tone="idle">Idle</div>
+        <div class="status-wrap">
+            <div class="status-chip" id="sessionStatus" data-tone="idle">Idle</div>
+            <div class="indicator-wrap" id="aiIndicatorWrap" data-state="idle">
+                <span class="dot" id="aiDot"></span>
+                <span id="aiIndicatorText">AI idle</span>
+            </div>
+            <button id="themeToggleBtn" class="btn ghost" type="button" aria-label="Toggle dark mode">Dark Mode</button>
+        </div>
     </header>
 
-    <main class="layout-grid">
-        <section class="card controls">
-            <h2>Session Controls</h2>
-            <div class="btn-row">
-                <button id="startSessionBtn" class="btn primary">Start Session</button>
-                <button id="endSessionBtn" class="btn danger" disabled>End Session</button>
-            </div>
-
-            <div class="btn-row">
-                <button id="micBtn" class="btn" disabled>Start Talking</button>
-                <div class="indicator-wrap" id="aiIndicatorWrap" data-state="idle">
-                    <span class="dot" id="aiDot"></span>
-                    <span id="aiIndicatorText">AI idle</span>
+    <main class="call-layout">
+        <section class="main-panel">
+            <div class="panel call-card">
+                <div id="avatarRing" class="call-avatar-ring" aria-live="polite">
+                    <div class="blob-stage">
+                        <div id="voiceBlob" class="voice-blob">
+                            <span class="voice-blob-core"></span>
+                            <span class="voice-blob-orbit orbit-a"></span>
+                            <span class="voice-blob-orbit orbit-b"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="call-copy">
+                    <h2>Audio Call</h2>
+                    <p>No camera, no tap-to-talk. A live voice blob pulses naturally with assistant speech.</p>
                 </div>
             </div>
 
-            <div class="field-wrap">
-                <label for="assistantResponseField">Assistant Response</label>
-                <textarea id="assistantResponseField" rows="6" readonly>Waiting for session to start.</textarea>
-                <p id="assistantText" hidden>Waiting for session to start.</p>
-            </div>
+            <section class="panel assistant-panel">
+                <div class="panel-head">
+                    <h2>Assistant Reply</h2>
+                </div>
+                <div class="field-wrap">
+                    <textarea id="assistantResponseField" rows="5" readonly>Waiting for session to start.</textarea>
+                    <p id="assistantText" hidden>Waiting for session to start.</p>
+                </div>
+                <div class="field-wrap">
+                    <label for="assistantAudio">Playback</label>
+                    <audio id="assistantAudio" controls></audio>
+                </div>
+            </section>
+        </section>
 
-            <div class="field-wrap">
-                <label for="assistantAudio">TTS Playback</label>
-                <audio id="assistantAudio" controls></audio>
-            </div>
+        <aside class="side-panel">
+            <section class="panel controls-panel">
+                <div class="panel-head">
+                    <h2>Session Controls</h2>
+                </div>
+                <div class="btn-col">
+                    <button id="startSessionBtn" class="btn primary">Start Session</button>
+                    <button id="endSessionBtn" class="btn danger" disabled>End Session</button>
+                </div>
+                <p id="autoListenHint" class="hint">Auto-listening is off.</p>
+            </section>
 
-            <div class="field-wrap error-card">
+            <section class="panel transcript-panel">
+                <div class="panel-head">
+                    <h2>Conversation</h2>
+                </div>
+                <div class="log" id="transcriptLog"></div>
+            </section>
+
+            <section class="panel error-panel" id="errorPanel" hidden>
                 <div class="error-head">
-                    <label for="errorLog">Errors</label>
+                    <h2>Errors</h2>
                     <button id="clearErrorsBtn" class="btn ghost" type="button">Clear</button>
                 </div>
                 <div id="errorLog" class="error-log" role="status" aria-live="polite">
                     <div class="error-empty">No errors yet.</div>
                 </div>
-            </div>
-        </section>
-
-        <section class="card conversation">
-            <h2>Conversation Log</h2>
-            <div class="log" id="transcriptLog"></div>
-        </section>
-
-        <section class="card presence">
-            <h2>Presence</h2>
-            <video id="webcamPreview" autoplay playsinline muted></video>
-            <div class="visual-signals" id="visualSignals">
-                <span>face_detected: unknown</span>
-                <span>looking_away: unknown</span>
-                <span>low_light: unknown</span>
-                <span>user_present: unknown</span>
-            </div>
-        </section>
+            </section>
+        </aside>
     </main>
 </div>
 
-<script src="{% static 'src/call.js' %}?v=20260318-3"></script>
+<script src="{% static 'src/call.js' %}?v=20260318-10"></script>
 </body>
 </html>
